@@ -19,8 +19,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 |----|------|
 | 阶段 | **M0 进行中**（三任务已派发，实现基本完成，验收合并阶段，见 §2.1） |
 | 已完成 | 需求定位、技术选型、调研、设计草案；pnpm monorepo 脚手架（core/router/cli/agent-echo 四包，build/test/typecheck 全绿）；git 已提交并推送 origin/main |
-| 进行中 | t-m0-core 实现完成待验收（8841f40，29/29 绿）· t-m0-echo 完成待验收（9bce5ca，14/14 绿）· t-m0-cli 命令+单测完成（24 绿），已合并 core/echo 依赖分支（3d1d750），集成/恢复验收在途 |
-| 下一步 | cli 最终回报 → PM 按 core→echo→cli 顺序验收并合并 main（lockfile 冲突按纪律 6 重生成）→ M0 验收（`cg run` 入队→echo 消费→重启恢复） |
+| 进行中 | t-m0-core 实现完成待验收（8841f40，29/29 绿）· **t-m0-echo 验收通过**（9bce5ca，PM 独立复核 14/14 绿）· t-m0-cli 命令+单测完成（24 绿），已合并 core/echo 依赖分支（3d1d750），集成/恢复验收在途 |
+| 下一步 | core 验收 + cli 最终回报 → PM 按 core→echo→cli 顺序合并 main（lockfile 冲突按纪律 6 重生成）→ M0 验收（`cg run` 入队→echo 消费→重启恢复） |
 | 已知阻塞 | 无（派发已由父会话完成） |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
@@ -133,3 +133,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：AGENTS.md（§2 状态更新、§2.1 新增纪律 6 lockfile/共享根文件策略）
 - 决策：① pnpm-lock.yaml 为生成物，各分支可随加依赖提交（追认前端研发 00582f3、研发B lockfile 提交合规），禁手编；合并冲突一律先解源码冲突再 `pnpm install` 重生成，不手工解 lockfile；② pnpm-workspace.yaml allowBuilds 落盘同属必然产物，追认研发A 改动，冲突取并集；③ 合并 main 顺序 core→echo→cli，每次合并后重生成 lockfile + 全量 build/test/typecheck；④ AGENTS.md 日志合并冲突取条目并集
 - 遗留：① 派发已由父会话完成；core（8841f40，29/29 绿）与 echo（9bce5ca，14/14 绿）完成待 PM 验收，cli（3d1d750）已合并两依赖分支、集成/恢复验收在途；② cli 分支的 AGENTS.md 缺研发A 完成日志条目（合并时序所致），PM 合并 main 时按并集规则补齐；③ 研发A 报告 completeRun(ok:false)→failed、recover 旧 run 标 cancelled 等实现语义，PM 验收时对照契约核验；④ DESIGN.md M0 细化仍由 PM 合并阶段统一回写
+
+### 2026-11-21 · Qoder (PM hub) · t-m0-echo 验收通过
+- 改动：AGENTS.md（§2 状态更新）；无代码改动（验收在 echo worktree 独立复核）
+- 决策：验收结论**通过**。复核证据：① worktree 内独立重跑 build/typecheck/test 全绿（14/14：契约 7 + echo 专属 7）；② card 与冻结任务书逐字段一致；③ 契约套件覆盖全部要求断言（card 合法性/healthCheck/RunResult+events/abort 中途与预先两种/cancel 幂等/失败注入经 createFailing 工厂解耦）；④ `./contract` 与主入口 dist 导出经 node import 实测可解析，主入口不含 vitest；⑤ abort 语义「ok:false」与失败计数实例隔离均有专属测试钉死。lockfile 变更按纪律 6 合规
+- 遗留：① echo 分支含 core 类型提交 4ff1e89，合并 main 时先合 core 全量分支即自然去重；② 通用契约要求插件至少异步检查一次 signal（瞬时同步完成的插件需保留异步检查点），未来插件接入须注意；③ 合并 main 仍按 core→echo→cli 顺序，待 core 验收与 cli 最终回报
