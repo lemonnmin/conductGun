@@ -17,10 +17,10 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M0 已完成**（三任务验收通过并合并 main，未 push） |
+| 阶段 | **M0 已完成**（三任务验收通过，已合并并推送 origin/main） |
 | 已完成 | 需求定位、技术选型、调研、设计草案；monorepo 脚手架；**M0 全部目标**：任务模型+SQLite 队列+WorkerHost（t-m0-core）、echo 插件+契约套件（t-m0-echo）、cg run/status/logs+重启恢复（t-m0-cli）；根级 74/74 测试绿 + M0 闭环冒烟通过 |
 | 进行中 | 无 |
-| 下一步 | M1（claude/codex/gemini headless 适配器 + worktree 隔离），待用户/父会话排期派发；push 待用户指示 |
+| 下一步 | M1（claude/codex/gemini headless 适配器 + worktree 隔离），待用户/父会话排期派发 |
 | 已知阻塞 | 无 |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
@@ -158,3 +158,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：main 合并提交 18dcedc（core）→ cf5e9b1（echo）→ 505aa99（cli），AGENTS.md 冲突按纪律 6 取日志并集、lockfile 经 pnpm install 校验；docs/DESIGN.md（§2 M0 状态子集、§4 契约套件落点与 abort 语义、§7 M0 进程内简化）；README.md（当前状态 M0 完成）；AGENTS.md §2
 - 决策：① t-m0-core 验收**通过**：独立重跑 29/29 绿；claimNext 单事务原子（匹配+状态+run+event）抽查属实；recover 幂等与崩溃恢复测试属实；不变量 grep 干净（无 LLM/无 agent 名硬编码/不 import plugins）；completeRun(ok:false)→failed、recover 旧 run 标 cancelled 语义予以确认。② t-m0-cli 验收**通过**：独立重跑 31/31 绿（含真实 echo 集成与崩溃恢复）；run 摘要取最后一条 event、50ms 轮询+30s 超时兜底等实现选择合理。③ **M0 验收通过**：合并后根级 build/typecheck/test 全绿（74/74）；真实冒烟——cg run 入队→echo 消费→done 低密度摘要 exit 0、cg status/logs 正常、不存在任务友好报错 exit 1、模拟崩溃（claim 后弃进程）→ cg run 自动 recover 并把旧任务重消费至 done。④ 研发A/B 的根配置改动（pnpm-workspace.yaml allowBuilds、lockfile）按纪律 6 追认
 - 遗留：① main 领先 origin/main 多个提交，**未 push**（待用户指示）；② 三个 worktree（.cg/worktrees/*）与 cg/* 分支保留未清理，待用户确认后处置；③ M1 待排期：claude/codex/gemini headless 适配器 + worktree 隔离 + daemon RPC 选型（开放问题 5）；④ 契约套件如需迁出 agent-echo 由 PM 后续决定；⑤ cg logs 时间为 UTC，M1 可转本地时区
+
+### 2026-11-21 · Qoder (PM hub) · 用户指示 push main 到远程
+- 改动：AGENTS.md §2 状态行；无代码改动
+- 决策：用户明确要求 push，已执行 `git push origin main`（借 gh 凭据，见 2026-11-20 日志坑位①），5fd5d2d..c15e603 推送成功，M0 全部成果已上远程
+- 遗留：worktree/分支清理与 M1 排期仍待用户决定
