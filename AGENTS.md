@@ -17,11 +17,11 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M0 进行中**（剩余目标已拆解派发，见 §2.1） |
+| 阶段 | **M0 进行中**（剩余目标已拆解，派发受阻，见 §2.1） |
 | 已完成 | 需求定位、技术选型、调研、设计草案；pnpm monorepo 脚手架（core/router/cli/agent-echo 四包，build/test/typecheck 全绿）；git 已提交并推送 origin/main |
-| 进行中 | t-m0-core（研发A）· t-m0-echo（研发B）· t-m0-cli（前端研发），PM hub 监督中 |
-| 下一步 | 三任务回报后 PM 验收、协调合并 main → M0 验收（`cg run` 入队→echo 消费→重启恢复） |
-| 已知阻塞 | 无 |
+| 进行中 | t-m0-core / t-m0-echo / t-m0-cli 任务书已就绪（docs/dispatch/2026-11-21-m0-tasks.md），派发受阻待执行 |
+| 下一步 | 由非委派会话按任务书派发 → 三任务回报后 PM 验收、协调合并 main → M0 验收（`cg run` 入队→echo 消费→重启恢复） |
+| 已知阻塞 | PM 会话为委派会话，平台禁止其向其他会话转发消息（send_message_to_chat_session 被拒）；派发须由父会话或用户主会话执行 |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
 
@@ -123,7 +123,7 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 决策：无
 - 遗留：① 本机 HTTPS git 凭据缺失，推送需借 gh 凭据：`git -c credential.helper= -c credential.helper='!/opt/homebrew/bin/gh auth git-credential' push`（gh 已登录 lemonnmin；SSH 22 端口被断、key 未注册）；② git 提交身份是自动生成的 ljb <ljb@liulemon.local>，用户如需规范署名应自行设置 git config user.name/email
 
-### 2026-11-21 · Qoder (PM hub) · 星型协作拓扑生效 + M0 剩余目标拆解派发
-- 改动：AGENTS.md（§2 状态更新、新增 §2.1 拓扑/所有权/纪律/M0 范围决策）；向三个研发会话派发 t-m0-core / t-m0-echo / t-m0-cli
-- 决策：① M0 冻结契约 v1：TaskSpec/CapabilityCard/AgentPlugin 按 DESIGN §5.2/§4，RunContext/RunResult/TaskQueue/WorkerHost 最小签名由 PM 冻结并随任务消息下达，研发A 落码 `packages/core/src/types.ts`；② M0 无独立 daemon，CLI 进程内组合（开放问题 5 留 M1+）；③ M0 CLI 直填 TaskSpec 为脚手架例外，M2 起严格执行不变量 8；④ 契约测试套件暂放 plugins/agent-echo 导出
-- 遗留：三任务在途，分支 cg/core/t-m0-core、cg/echo/t-m0-echo、cg/cli/t-m0-cli（worktree 在 .cg/worktrees/*）；依赖顺序 core→echo→cli，B/C 可先行开发、按需合并依赖分支取类型（只读，不改对方模块）；DESIGN.md 的 M0 细化由 PM 在合并阶段统一回写；better-sqlite3 首次安装需 `pnpm approve-builds better-sqlite3 -y`；跨包类型解析需先 build core（exports 指向 dist）
+### 2026-11-21 · Qoder (PM hub) · 星型协作拓扑生效 + M0 剩余目标拆解（派发受阻）
+- 改动：AGENTS.md（§2 状态更新、新增 §2.1 拓扑/所有权/纪律/M0 范围决策）；三份任务书落盘 docs/dispatch/2026-11-21-m0-tasks.md（t-m0-core / t-m0-echo / t-m0-cli，含冻结契约与验收标准）
+- 决策：① M0 冻结契约 v1：TaskSpec/CapabilityCard/AgentPlugin 按 DESIGN §5.2/§4，RunContext/RunResult/TaskQueue/WorkerHost 最小签名由 PM 冻结并写入任务书，研发A 落码 `packages/core/src/types.ts`；② M0 无独立 daemon，CLI 进程内组合（开放问题 5 留 M1+）；③ M0 CLI 直填 TaskSpec 为脚手架例外，M2 起严格执行不变量 8；④ 契约测试套件暂放 plugins/agent-echo 导出
+- 遗留：**派发未完成**——本 PM 会话是委派会话，平台拒绝其 send_message_to_chat_session（禁止委派会话向其他会话转发），三条消息均未送达；需父会话或用户主会话按任务书向研发A/B/前端研发派发（supervise）。其余：依赖顺序 core→echo→cli，B/C 可先行开发、按需合并依赖分支取类型（只读，不改对方模块）；DESIGN.md 的 M0 细化由 PM 在合并阶段统一回写；better-sqlite3 首次安装需 `pnpm approve-builds better-sqlite3 -y`；跨包类型解析需先 build core（exports 指向 dist）
