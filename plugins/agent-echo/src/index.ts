@@ -1,0 +1,1 @@
+export const ECHO_PACKAGE = "@conductgun/agent-echo";
