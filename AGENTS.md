@@ -128,6 +128,7 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：AGENTS.md（§2 状态更新、新增 §2.1 拓扑/所有权/纪律/M0 范围决策）；三份任务书落盘 docs/dispatch/2026-11-21-m0-tasks.md（t-m0-core / t-m0-echo / t-m0-cli，含冻结契约与验收标准）
 - 决策：① M0 冻结契约 v1：TaskSpec/CapabilityCard/AgentPlugin 按 DESIGN §5.2/§4，RunContext/RunResult/TaskQueue/WorkerHost 最小签名由 PM 冻结并写入任务书，研发A 落码 `packages/core/src/types.ts`；② M0 无独立 daemon，CLI 进程内组合（开放问题 5 留 M1+）；③ M0 CLI 直填 TaskSpec 为脚手架例外，M2 起严格执行不变量 8；④ 契约测试套件暂放 plugins/agent-echo 导出
 - 遗留：**派发未完成**——本 PM 会话是委派会话，平台拒绝其 send_message_to_chat_session（禁止委派会话向其他会话转发），三条消息均未送达；需父会话或用户主会话按任务书向研发A/B/前端研发派发（supervise）。其余：依赖顺序 core→echo→cli，B/C 可先行开发、按需合并依赖分支取类型（只读，不改对方模块）；DESIGN.md 的 M0 细化由 PM 在合并阶段统一回写；better-sqlite3 首次安装需 `pnpm approve-builds better-sqlite3 -y`；跨包类型解析需先 build core（exports 指向 dist）
+<<<<<<< HEAD
 
 ### 2026-11-21 · Qoder (PM hub) · lockfile 合并策略仲裁 + 三任务进展登记
 - 改动：AGENTS.md（§2 状态更新、§2.1 新增纪律 6 lockfile/共享根文件策略）
@@ -138,3 +139,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：AGENTS.md（§2 状态更新）；无代码改动（验收在 echo worktree 独立复核）
 - 决策：验收结论**通过**。复核证据：① worktree 内独立重跑 build/typecheck/test 全绿（14/14：契约 7 + echo 专属 7）；② card 与冻结任务书逐字段一致；③ 契约套件覆盖全部要求断言（card 合法性/healthCheck/RunResult+events/abort 中途与预先两种/cancel 幂等/失败注入经 createFailing 工厂解耦）；④ `./contract` 与主入口 dist 导出经 node import 实测可解析，主入口不含 vitest；⑤ abort 语义「ok:false」与失败计数实例隔离均有专属测试钉死。lockfile 变更按纪律 6 合规
 - 遗留：① echo 分支含 core 类型提交 4ff1e89，合并 main 时先合 core 全量分支即自然去重；② 通用契约要求插件至少异步检查一次 signal（瞬时同步完成的插件需保留异步检查点），未来插件接入须注意；③ 合并 main 仍按 core→echo→cli 顺序，待 core 验收与 cli 最终回报
+
+### 2026-11-21 · 研发A (Qoder 委派会话) · t-m0-core：冻结契约落码 + SQLite 队列 + WorkerHost
+- 改动：packages/core/src/{types,ids,queue,worker-host,index}.ts；packages/core/test/{helpers,queue,worker-host}.test.ts（29 用例含崩溃恢复）；core package.json（better-sqlite3 ^12.11.1 / @types/better-sqlite3 / vitest devDep + test script）+ 包内 vitest.config.ts；pnpm-lock.yaml 与 pnpm-workspace.yaml（allowBuilds: better-sqlite3，任务书指令 approve-builds 的必然落盘，属根配置请 PM 知悉）
+- 决策：公开契约签名与冻结版 v1 完全一致，无偏离。实现细节：① RunContext.reportEvent 需写 events 但冻结面无事件写入方法——用包内 WeakMap 通道 appendEventInternal（queue.ts 导出、index.ts 不导出），公开面零扩展；② completeRun(ok:false) → task failed（execute 抛错走 failRun）；③ recover() 把 running 重置 queued，旧 run 标 cancelled（error=interrupted），幂等；④ claimNext 单事务原子，FIFO 按 created_at+rowid，未注册 agent 返回 null；⑤ WorkerHost.start 自动 registerAgent（幂等 upsert），stop() abort 在途 run 并等待落定
+- 遗留：分支 cg/core/t-m0-core（4ff1e89 types 先行 → 8841f40 实现 → 本条日志 commit），未 push，待 PM 验收合并 main。依赖方（echo/cli）现在可 merge 本分支取类型，先 `pnpm --filter @conductgun/core build`。M0 简化项留给 M1+：无租约/心跳续租（heartbeat no-op）、workdir=process.cwd()（worktree 隔离）、无重试/优先级/DAG。build/test/typecheck 全绿（29/29）
