@@ -19,8 +19,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 |----|------|
 | 阶段 | **M0 进行中**（三任务已由父会话派发执行，见 §2.1） |
 | 已完成 | 需求定位、技术选型、调研、设计草案；pnpm monorepo 脚手架（core/router/cli/agent-echo 四包，build/test/typecheck 全绿）；git 已提交并推送 origin/main |
-| 进行中 | **t-m0-echo 已完成待 PM 验收**（cg/echo/t-m0-echo，见同步日志 2026-11-21 研发B）；t-m0-core 契约类型已落码（4ff1e89），队列/WorkerHost 在途；t-m0-cli 已派发 |
-| 下一步 | PM 验收 t-m0-echo → t-m0-core / t-m0-cli 回报后协调合并 main → M0 验收（`cg run` 入队→echo 消费→重启恢复） |
+| 进行中 | **三任务均已完成待 PM 验收**：t-m0-core（cg/core/t-m0-core）、t-m0-echo（cg/echo/t-m0-echo）、t-m0-cli（cg/cli/t-m0-cli），详见同步日志 2026-11-21 各研发条目 |
+| 下一步 | PM 验收三分支 → 协调合并 main → M0 验收（`cg run` 入队→echo 消费→重启恢复） |
 | 已知阻塞 | 无（原派发阻塞已于 2026-11-21 由父会话代为派发解决） |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
@@ -132,3 +132,13 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：plugins/agent-echo（新增 src/echo.ts、src/contract.ts、test/echo.test.ts、vitest.config.ts；src/index.ts 改为插件导出；package.json 加 `./contract` exports 子路径、test 脚本、vitest devDep）；pnpm-lock.yaml（仅 agent-echo 的 vitest 条目——package.json 允许范围内改动的必然产物，按协议登记的范围外必要改动）；合并 cg/core/t-m0-core @ 4ff1e89 取冻结契约类型（只读引用，未改 core 任何文件）；AGENTS.md 状态行更新
 - 决策：① abort 语义二选一选定「返回 { ok:false, summary:"aborted" }」，echo 专属测试钉死；通用契约断言按冻结契约接受 ok:false 或抛出两种实现；② 契约套件签名 `runAgentContractTests(name, factory, opts?)`，失败注入经 `opts.createFailing` 工厂提供（不绑定 echo 私有 failNext），未提供则 skip 该项；③ cancel(runId) 用插件内部 AbortController 与宿主 ctx.signal 合并实现（signal 归宿主所有，插件无法直接 abort），幂等、未知 runId 无操作；④ 套件同时导出 createContractRunHarness / makeContractTaskSpec 供未来插件测试复用；⑤ 主入口不 re-export 契约套件，避免消费方被迫引入 vitest
 - 遗留：① 验收结果：build / typecheck / test 全绿（14 tests：契约 7 + echo 专属 7），`./contract` 子路径 dist 导出已验证可解析；② 未来插件接入方式：import { runAgentContractTests } from "@conductgun/agent-echo/contract"，传 factory 与可选 createFailing；③ 通用 abort/cancel 断言要求插件至少异步检查一次 signal（瞬时同步完成的插件需在实现中保留异步检查点）；④ 套件如需迁出 agent-echo 由 PM 决定，迁移仅涉及 src/contract.ts 与 exports 子路径；⑤ 分支 cg/echo/t-m0-echo @ 17fa365（实现）+ 本条日志提交，未 push，合并 main 由 PM 协调
+
+### 2026-11-21 · 研发A (Qoder 委派会话) · t-m0-core：冻结契约落码 + SQLite 队列 + WorkerHost
+- 改动：packages/core/src/{types,ids,queue,worker-host,index}.ts；packages/core/test/{helpers,queue,worker-host}.test.ts（29 用例含崩溃恢复）；core package.json（better-sqlite3 ^12.11.1 / @types/better-sqlite3 / vitest devDep + test script）+ 包内 vitest.config.ts；pnpm-lock.yaml 与 pnpm-workspace.yaml（allowBuilds: better-sqlite3，任务书指令 approve-builds 的必然落盘，属根配置请 PM 知悉）
+- 决策：公开契约签名与冻结版 v1 完全一致，无偏离。实现细节：① RunContext.reportEvent 需写 events 但冻结面无事件写入方法——用包内 WeakMap 通道 appendEventInternal（queue.ts 导出、index.ts 不导出），公开面零扩展；② completeRun(ok:false) → task failed（execute 抛错走 failRun）；③ recover() 把 running 重置 queued，旧 run 标 cancelled（error=interrupted），幂等；④ claimNext 单事务原子，FIFO 按 created_at+rowid，未注册 agent 返回 null；⑤ WorkerHost.start 自动 registerAgent（幂等 upsert），stop() abort 在途 run 并等待落定
+- 遗留：分支 cg/core/t-m0-core（4ff1e89 types 先行 → 8841f40 实现 → 本条日志 commit），未 push，待 PM 验收合并 main。依赖方（echo/cli）现在可 merge 本分支取类型，先 `pnpm --filter @conductgun/core build`。M0 简化项留给 M1+：无租约/心跳续租（heartbeat no-op）、workdir=process.cwd()（worktree 隔离）、无重试/优先级/DAG。build/test/typecheck 全绿（29/29）
+
+### 2026-11-21 · 前端研发 (Qoder 委派会话) · t-m0-cli：cg run/status/logs 接线 + 重启恢复集成测试（已完成待验收）
+- 改动：packages/cli（新增 src/args.ts 命令解析、src/spec.ts TaskSpec 构造、src/format.ts 低密度输出、src/commands.ts 进程内 Queue+WorkerHost 组合；src/index.ts 改为 shebang 入口；package.json 加 @conductgun/agent-echo 依赖与 vitest devDep/test 脚本、移除 M0 未用的 @conductgun/router 依赖）；packages/cli/test/{args,spec,format,cli}.test.ts（31 用例）；pnpm-lock.yaml（cli 依赖变更的必然产物）；合并 cg/core/t-m0-core（4ff1e89→8841f40→a056be4）与 cg/echo/t-m0-echo（只读引用，未改对方模块文件）；AGENTS.md（解决与研发A/B 日志的合并冲突：双方条目全保留，状态行合并）
+- 决策：无契约偏离。实现选择：① run 的结果摘要取该任务最后一条 event 的 message（冻结契约 getTask 不暴露 RunResult，completeRun 已把 summary 写入 events）；② run 等待终态轮询 50ms、30s 超时兜底（防匹配失败时挂死）；③ 每次打开队列先 recover()（M0 单进程简化，任务书规定）；④ commands 层注入 CommandIo 与 plugins 参数，stub 闭环测试不依赖真实 echo；⑤ 时间显示用 UTC ISO（logs），M1 可换本地时区
+- 遗留：① 验收结果：build / typecheck / test 全绿（31 tests：单测 24 + 集成 7，含真实 echoPlugin 闭环、失败注入退出码、崩溃恢复两条路径）；bin 冒烟通过（run/status/logs/错误路径退出码均符合任务书）；② 分支 cg/cli/t-m0-cli，未 push，合并 main 由 PM 协调——本分支已含 core/echo 全部提交，PM 合并本分支即可带齐三方（AGENTS.md 冲突已在本分支解决）；③ M1+ 提示：daemon RPC 落地后 commands.ts 的进程内组合改为客户端调用；cg logs 时间可转本地时区；④ DESIGN.md §7 仍描述 daemon RPC 形态，与 M0 进程内实现的差异由 PM 在合并阶段统一回写（任务书禁改 docs）
