@@ -33,6 +33,7 @@ pending ──(依赖满足)──► queued ──(dispatcher 出队)──► 
 - 状态迁移全部落库（SQLite），任何进程崩溃后可从库恢复。
 - `running` 的 Run 持有**租约（lease）**，worker 定期心跳续租；租约过期由 dispatcher 回收重排。
 - `needs_review → done` 必须经过审查（MVP 由用户在 CLI 确认 diff；后期可加审查 agent）。
+- **M0 已实现子集**（冻结契约 v1，落码 `packages/core/src/types.ts`）：状态仅 queued/running/done/failed/cancelled；无租约/心跳续租（heartbeat 为 no-op）、无重试/优先级/DAG，出队按 createdAt FIFO；`completeRun(ok:false)` → task failed；`recover()` 启动时把 running 重置 queued、旧 run 标 cancelled（幂等）。租约/重试/review 属 M3。
 
 ## 3. 队列与调度（packages/core）
 
@@ -70,6 +71,7 @@ interface AgentPlugin {
 - 插件发现：MVP 用 workspace 内静态注册（`plugins/` 目录约定），后期支持外部 npm 包 / 配置声明。
 - `execute` 内部自选传输：M1 用 headless CLI（`claude -p --output-format stream-json`、`codex exec --json`、`gemini -p` 等），M4 增加 ACP 通用适配器。
 - **契约测试**：`agent-echo` mock 插件 + 一套插件契约测试套件，任何新插件必须通过。
+- **M0 已实现**：契约套件经 `@conductgun/agent-echo/contract` 子路径导出——`runAgentContractTests(name, factory, opts?)`（失败注入经 `opts.createFailing` 工厂提供，未提供则 skip），另导出 `createContractRunHarness` / `makeContractTaskSpec` 供复用。abort 语义接受「返回 ok:false」或「抛出」两种实现；插件必须至少异步检查一次 ctx.signal（瞬时同步完成的实现需保留异步检查点）。
 
 ## 5. Router（packages/router）
 
@@ -138,6 +140,8 @@ interface TaskSpec {
 ## 7. CLI（packages/cli）
 
 `cg` 命令与 headless daemon 通过本地 RPC（unix socket / localhost HTTP）通信；daemon 无头运行，队列状态全在 SQLite。命令集见 README「CLI 一瞥」。`cg daemon start|stop|status` 管理生命周期。
+
+**M0 简化（已实现）**：无独立 daemon，CLI 进程内组合 TaskQueue + WorkerHost；已实现 `cg run / status / logs`（run 等待终态后退出，输出低密度摘要）。daemon RPC 选型（开放问题 5）留 M1+，届时 commands 层改为客户端调用，core 不动。
 
 ## 8. 开放问题（M0/M1 期间敲定，敲定后写 ADR 并更新本节）
 

@@ -17,11 +17,11 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M0 进行中**（三任务已派发，实现基本完成，验收合并阶段，见 §2.1） |
-| 已完成 | 需求定位、技术选型、调研、设计草案；pnpm monorepo 脚手架（core/router/cli/agent-echo 四包，build/test/typecheck 全绿）；git 已提交并推送 origin/main |
-| 进行中 | t-m0-core 实现完成待验收（8841f40，29/29 绿）· **t-m0-echo 验收通过**（9bce5ca，PM 独立复核 14/14 绿）· t-m0-cli 命令+单测完成（24 绿），已合并 core/echo 依赖分支（3d1d750），集成/恢复验收在途 |
-| 下一步 | core 验收 + cli 最终回报 → PM 按 core→echo→cli 顺序合并 main（lockfile 冲突按纪律 6 重生成）→ M0 验收（`cg run` 入队→echo 消费→重启恢复） |
-| 已知阻塞 | 无（派发已由父会话完成） |
+| 阶段 | **M0 已完成**（三任务验收通过并合并 main，未 push） |
+| 已完成 | 需求定位、技术选型、调研、设计草案；monorepo 脚手架；**M0 全部目标**：任务模型+SQLite 队列+WorkerHost（t-m0-core）、echo 插件+契约套件（t-m0-echo）、cg run/status/logs+重启恢复（t-m0-cli）；根级 74/74 测试绿 + M0 闭环冒烟通过 |
+| 进行中 | 无 |
+| 下一步 | M1（claude/codex/gemini headless 适配器 + worktree 隔离），待用户/父会话排期派发；push 待用户指示 |
+| 已知阻塞 | 无 |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
 
@@ -148,7 +148,13 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：plugins/agent-echo（新增 src/echo.ts、src/contract.ts、test/echo.test.ts、vitest.config.ts；src/index.ts 改为插件导出；package.json 加 `./contract` exports 子路径、test 脚本、vitest devDep）；pnpm-lock.yaml（仅 agent-echo 的 vitest 条目——package.json 允许范围内改动的必然产物，按协议登记的范围外必要改动）；合并 cg/core/t-m0-core @ 4ff1e89 取冻结契约类型（只读引用，未改 core 任何文件）；AGENTS.md 状态行更新
 - 决策：① abort 语义二选一选定「返回 { ok:false, summary:"aborted" }」，echo 专属测试钉死；通用契约断言按冻结契约接受 ok:false 或抛出两种实现；② 契约套件签名 `runAgentContractTests(name, factory, opts?)`，失败注入经 `opts.createFailing` 工厂提供（不绑定 echo 私有 failNext），未提供则 skip 该项；③ cancel(runId) 用插件内部 AbortController 与宿主 ctx.signal 合并实现（signal 归宿主所有，插件无法直接 abort），幂等、未知 runId 无操作；④ 套件同时导出 createContractRunHarness / makeContractTaskSpec 供未来插件测试复用；⑤ 主入口不 re-export 契约套件，避免消费方被迫引入 vitest
 - 遗留：① 验收结果：build / typecheck / test 全绿（14 tests：契约 7 + echo 专属 7），`./contract` 子路径 dist 导出已验证可解析；② 未来插件接入方式：import { runAgentContractTests } from "@conductgun/agent-echo/contract"，传 factory 与可选 createFailing；③ 通用 abort/cancel 断言要求插件至少异步检查一次 signal（瞬时同步完成的插件需在实现中保留异步检查点）；④ 套件如需迁出 agent-echo 由 PM 决定，迁移仅涉及 src/contract.ts 与 exports 子路径；⑤ 分支 cg/echo/t-m0-echo @ 17fa365（实现）+ 本条日志提交，未 push，合并 main 由 PM 协调
+
 ### 2026-11-21 · 前端研发 (Qoder 委派会话) · t-m0-cli：cg run/status/logs 接线 + 重启恢复集成测试（已完成待验收）
 - 改动：packages/cli（新增 src/args.ts 命令解析、src/spec.ts TaskSpec 构造、src/format.ts 低密度输出、src/commands.ts 进程内 Queue+WorkerHost 组合；src/index.ts 改为 shebang 入口；package.json 加 @conductgun/agent-echo 依赖与 vitest devDep/test 脚本、移除 M0 未用的 @conductgun/router 依赖）；packages/cli/test/{args,spec,format,cli}.test.ts（31 用例）；pnpm-lock.yaml（cli 依赖变更的必然产物）；合并 cg/core/t-m0-core（4ff1e89→8841f40→a056be4）与 cg/echo/t-m0-echo（只读引用，未改对方模块文件）；AGENTS.md（解决与研发A/B 日志的合并冲突：双方条目全保留，状态行合并）
 - 决策：无契约偏离。实现选择：① run 的结果摘要取该任务最后一条 event 的 message（冻结契约 getTask 不暴露 RunResult，completeRun 已把 summary 写入 events）；② run 等待终态轮询 50ms、30s 超时兜底（防匹配失败时挂死）；③ 每次打开队列先 recover()（M0 单进程简化，任务书规定）；④ commands 层注入 CommandIo 与 plugins 参数，stub 闭环测试不依赖真实 echo；⑤ 时间显示用 UTC ISO（logs），M1 可换本地时区
 - 遗留：① 验收结果：build / typecheck / test 全绿（31 tests：单测 24 + 集成 7，含真实 echoPlugin 闭环、失败注入退出码、崩溃恢复两条路径）；bin 冒烟通过（run/status/logs/错误路径退出码均符合任务书）；② 分支 cg/cli/t-m0-cli，未 push，合并 main 由 PM 协调——本分支已含 core/echo 全部提交，PM 合并本分支即可带齐三方（AGENTS.md 冲突已在本分支解决）；③ M1+ 提示：daemon RPC 落地后 commands.ts 的进程内组合改为客户端调用；cg logs 时间可转本地时区；④ DESIGN.md §7 仍描述 daemon RPC 形态，与 M0 进程内实现的差异由 PM 在合并阶段统一回写（任务书禁改 docs）
+
+### 2026-11-21 · Qoder (PM hub) · t-m0-core/t-m0-cli 验收通过 + 三方合并 main + M0 验收通过
+- 改动：main 合并提交 18dcedc（core）→ cf5e9b1（echo）→ 505aa99（cli），AGENTS.md 冲突按纪律 6 取日志并集、lockfile 经 pnpm install 校验；docs/DESIGN.md（§2 M0 状态子集、§4 契约套件落点与 abort 语义、§7 M0 进程内简化）；README.md（当前状态 M0 完成）；AGENTS.md §2
+- 决策：① t-m0-core 验收**通过**：独立重跑 29/29 绿；claimNext 单事务原子（匹配+状态+run+event）抽查属实；recover 幂等与崩溃恢复测试属实；不变量 grep 干净（无 LLM/无 agent 名硬编码/不 import plugins）；completeRun(ok:false)→failed、recover 旧 run 标 cancelled 语义予以确认。② t-m0-cli 验收**通过**：独立重跑 31/31 绿（含真实 echo 集成与崩溃恢复）；run 摘要取最后一条 event、50ms 轮询+30s 超时兜底等实现选择合理。③ **M0 验收通过**：合并后根级 build/typecheck/test 全绿（74/74）；真实冒烟——cg run 入队→echo 消费→done 低密度摘要 exit 0、cg status/logs 正常、不存在任务友好报错 exit 1、模拟崩溃（claim 后弃进程）→ cg run 自动 recover 并把旧任务重消费至 done。④ 研发A/B 的根配置改动（pnpm-workspace.yaml allowBuilds、lockfile）按纪律 6 追认
+- 遗留：① main 领先 origin/main 多个提交，**未 push**（待用户指示）；② 三个 worktree（.cg/worktrees/*）与 cg/* 分支保留未清理，待用户确认后处置；③ M1 待排期：claude/codex/gemini headless 适配器 + worktree 隔离 + daemon RPC 选型（开放问题 5）；④ 契约套件如需迁出 agent-echo 由 PM 后续决定；⑤ cg logs 时间为 UTC，M1 可转本地时区

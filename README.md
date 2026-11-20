@@ -127,7 +127,7 @@ cg review <task-id>                          # 审查 diff，决定合并/打回
 
 ## 当前状态
 
-**M0 进行中**。已完成：需求定位、已有工作调研（见 [docs/RESEARCH.md](docs/RESEARCH.md)）、核心设计草案（见 [docs/DESIGN.md](docs/DESIGN.md)）、技术选型、pnpm monorepo 脚手架（core/router/cli/agent-echo 四包，构建与测试通过）。下一步：任务模型 + SQLite 队列 + echo 插件消费闭环。
+**M0 已完成**。任务模型 + SQLite 队列（better-sqlite3，崩溃可恢复）+ WorkerHost + echo mock 插件 + 可复用插件契约测试套件 + `cg run/status/logs` 全部落地并验收：`cg run` 入队→echo 消费→终态摘要，进程崩溃后队列自动恢复重消费（74 个测试全绿）。下一步 M1：claude/codex/gemini headless 适配器 + worktree 隔离。
 
 开发命令：`pnpm install` · `pnpm build` · `pnpm test` · `pnpm typecheck`
 
