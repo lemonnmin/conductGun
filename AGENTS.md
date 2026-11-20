@@ -17,11 +17,35 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M0 进行中**（脚手架已完成） |
-| 已完成 | 需求定位、技术选型、调研、设计草案；pnpm monorepo 脚手架（core/router/cli/agent-echo 四包，build/test/typecheck 全绿，git 已 init 未提交） |
-| 进行中 | 无 |
-| 下一步 | M0 剩余：任务模型 + SQLite 队列 + echo 插件消费闭环（`cg run` 入队→消费→重启恢复） |
+| 阶段 | **M0 进行中**（剩余目标已拆解派发，见 §2.1） |
+| 已完成 | 需求定位、技术选型、调研、设计草案；pnpm monorepo 脚手架（core/router/cli/agent-echo 四包，build/test/typecheck 全绿）；git 已提交并推送 origin/main |
+| 进行中 | t-m0-core（研发A）· t-m0-echo（研发B）· t-m0-cli（前端研发），PM hub 监督中 |
+| 下一步 | 三任务回报后 PM 验收、协调合并 main → M0 验收（`cg run` 入队→echo 消费→重启恢复） |
 | 已知阻塞 | 无 |
+
+### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
+
+**星型拓扑**：PM hub（Qoder 主会话）是唯一指挥节点，负责拆解、派发、验收、仲裁接口争议、维护同步文档。三个研发会话是执行侧，只向 PM 汇报，不互相直接改对方代码。
+
+| 角色 | 模块所有权 | 当前任务 / 分支 |
+|------|-----------|----------------|
+| PM hub | AGENTS.md / README / docs（研发按协议追加日志，合并冲突由 PM 解决） | 派发与验收 |
+| 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m0-core / `cg/core/t-m0-core` |
+| 研发B | `plugins/*`（echo 插件、契约测试套件） | t-m0-echo / `cg/echo/t-m0-echo` |
+| 前端研发 | `packages/cli`（cg 命令）及未来 Web | t-m0-cli / `cg/cli/t-m0-cli` |
+| （冻结） | `packages/router` M2 前不动 | — |
+
+**协作纪律（派发任务时随消息下达）：**
+1. 开工前读本文件「当前状态」+ 最近 3 条同步日志；收工后追加日志、更新状态。
+2. 每个研发在独立 git worktree + 分支干活（`.cg/worktrees/<task-id>`，分支 `cg/<角色>/<task-id>`）；禁止 push、禁止动主工作区他人模块；合并 main 由 PM 协调。
+3. 任务消息自包含：任务 id、目标、允许碰的文件、约束、验收标准、汇报格式。
+4. 同一模块同一时间只有一个会话在改；跨模块接口变更先经 PM。
+5. M0 冻结契约 v1 由 PM 在任务消息中下达，落码位置 `packages/core/src/types.ts`（研发A）；任何偏离须报 PM 仲裁，不得自行改契约。
+
+**M0 范围决策（PM 仲裁，2026-11-21）：**
+- M0 不做独立 daemon：CLI 进程内组合 TaskQueue + WorkerHost；daemon RPC 选型（DESIGN 开放问题 5）留 M1+。
+- M0 CLI 直填 TaskSpec（用户原文进 goal/instructions）是脚手架例外——echo 为 mock、无真实下游 agent；M2 Router 落地后严格执行不变量 8。
+- 插件契约测试套件暂放 `plugins/agent-echo` 导出，供未来插件复用；如需迁移由 PM 决定。
 
 ## 3. 架构不变量（不得违反）
 
@@ -93,3 +117,13 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：根配置（package.json / pnpm-workspace.yaml / tsconfig.base.json / vitest.config.ts / .gitignore）；packages/core、packages/router、packages/cli、plugins/agent-echo 四包骨架；core 冒烟测试；git init（main，未提交）
 - 决策：无架构级变更；工具链实际版本 pnpm 12.21.0 / TypeScript 7.0.2 / vitest 5.1.1 / @types/node 26
 - 遗留：给下一个 agent 的坑位提示——① pnpm 12 拦截依赖构建脚本，需 `pnpm approve-builds <pkg> -y`（esbuild 已批准；后续 better-sqlite3 也要批准）；② TS7 不自动加载 @types，tsconfig.base.json 已显式 `"types": ["node"]`；③ pnpm 隔离布局下每个子包需自带 typescript + @types/node devDeps；④ SQLite 队列、任务模型、echo 插件逻辑均未实现，各包 index.ts 仅占位导出
+
+### 2026-11-20 · Qoder (主会话) · 关联远程仓库并首次推送
+- 改动：git remote origin = https://github.com/lemonnmin/conductGun.git；首次提交 f1e0d67（脚手架+文档 23 文件）；合并远程 LICENSE（--allow-unrelated-histories）；已推送，main 跟踪 origin/main
+- 决策：无
+- 遗留：① 本机 HTTPS git 凭据缺失，推送需借 gh 凭据：`git -c credential.helper= -c credential.helper='!/opt/homebrew/bin/gh auth git-credential' push`（gh 已登录 lemonnmin；SSH 22 端口被断、key 未注册）；② git 提交身份是自动生成的 ljb <ljb@liulemon.local>，用户如需规范署名应自行设置 git config user.name/email
+
+### 2026-11-21 · Qoder (PM hub) · 星型协作拓扑生效 + M0 剩余目标拆解派发
+- 改动：AGENTS.md（§2 状态更新、新增 §2.1 拓扑/所有权/纪律/M0 范围决策）；向三个研发会话派发 t-m0-core / t-m0-echo / t-m0-cli
+- 决策：① M0 冻结契约 v1：TaskSpec/CapabilityCard/AgentPlugin 按 DESIGN §5.2/§4，RunContext/RunResult/TaskQueue/WorkerHost 最小签名由 PM 冻结并随任务消息下达，研发A 落码 `packages/core/src/types.ts`；② M0 无独立 daemon，CLI 进程内组合（开放问题 5 留 M1+）；③ M0 CLI 直填 TaskSpec 为脚手架例外，M2 起严格执行不变量 8；④ 契约测试套件暂放 plugins/agent-echo 导出
+- 遗留：三任务在途，分支 cg/core/t-m0-core、cg/echo/t-m0-echo、cg/cli/t-m0-cli（worktree 在 .cg/worktrees/*）；依赖顺序 core→echo→cli，B/C 可先行开发、按需合并依赖分支取类型（只读，不改对方模块）；DESIGN.md 的 M0 细化由 PM 在合并阶段统一回写；better-sqlite3 首次安装需 `pnpm approve-builds better-sqlite3 -y`；跨包类型解析需先 build core（exports 指向 dist）
