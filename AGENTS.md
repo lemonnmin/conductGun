@@ -17,11 +17,11 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M0 进行中**（剩余目标已拆解，派发受阻，见 §2.1） |
+| 阶段 | **M0 进行中**（三任务已派发，实现基本完成，验收合并阶段，见 §2.1） |
 | 已完成 | 需求定位、技术选型、调研、设计草案；pnpm monorepo 脚手架（core/router/cli/agent-echo 四包，build/test/typecheck 全绿）；git 已提交并推送 origin/main |
-| 进行中 | t-m0-core / t-m0-echo / t-m0-cli 任务书已就绪（docs/dispatch/2026-11-21-m0-tasks.md），派发受阻待执行 |
-| 下一步 | 由非委派会话按任务书派发 → 三任务回报后 PM 验收、协调合并 main → M0 验收（`cg run` 入队→echo 消费→重启恢复） |
-| 已知阻塞 | PM 会话为委派会话，平台禁止其向其他会话转发消息（send_message_to_chat_session 被拒）；派发须由父会话或用户主会话执行 |
+| 进行中 | t-m0-core 实现完成待验收（8841f40，29/29 绿）· t-m0-echo 完成待验收（9bce5ca，14/14 绿）· t-m0-cli 命令+单测完成（24 绿），已合并 core/echo 依赖分支（3d1d750），集成/恢复验收在途 |
+| 下一步 | cli 最终回报 → PM 按 core→echo→cli 顺序验收并合并 main（lockfile 冲突按纪律 6 重生成）→ M0 验收（`cg run` 入队→echo 消费→重启恢复） |
+| 已知阻塞 | 无（派发已由父会话完成） |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
 
@@ -41,6 +41,7 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 3. 任务消息自包含：任务 id、目标、允许碰的文件、约束、验收标准、汇报格式。
 4. 同一模块同一时间只有一个会话在改；跨模块接口变更先经 PM。
 5. M0 冻结契约 v1 由 PM 在任务消息中下达，落码位置 `packages/core/src/types.ts`（研发A）；任何偏离须报 PM 仲裁，不得自行改契约。
+6. **lockfile 与共享根文件策略（PM 仲裁，2026-11-21）**：`pnpm-lock.yaml` 是生成物——各分支加依赖时可随提交入库（追认前端研发 00582f3、研发B 的 lockfile 提交合规），禁止手工编辑。合并（含研发合并依赖分支到自己分支）遇 lockfile 冲突时不手工解冲突：先解完 package.json 等源码冲突，再 `pnpm install` 重新生成 lockfile 作为合并 resolution。`pnpm-workspace.yaml` 的 allowBuilds 等依赖批准落盘同属必然产物，允许提交（追认研发A 的改动），合并冲突取并集。合并 main 由 PM 按 core→echo→cli 顺序执行，每次合并后重生成 lockfile 并跑全量 build/test/typecheck 验证。AGENTS.md 同步日志合并冲突取各分支条目并集（按时间排序，不改写历史）。
 
 **M0 范围决策（PM 仲裁，2026-11-21）：**
 - M0 不做独立 daemon：CLI 进程内组合 TaskQueue + WorkerHost；daemon RPC 选型（DESIGN 开放问题 5）留 M1+。
@@ -127,3 +128,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：AGENTS.md（§2 状态更新、新增 §2.1 拓扑/所有权/纪律/M0 范围决策）；三份任务书落盘 docs/dispatch/2026-11-21-m0-tasks.md（t-m0-core / t-m0-echo / t-m0-cli，含冻结契约与验收标准）
 - 决策：① M0 冻结契约 v1：TaskSpec/CapabilityCard/AgentPlugin 按 DESIGN §5.2/§4，RunContext/RunResult/TaskQueue/WorkerHost 最小签名由 PM 冻结并写入任务书，研发A 落码 `packages/core/src/types.ts`；② M0 无独立 daemon，CLI 进程内组合（开放问题 5 留 M1+）；③ M0 CLI 直填 TaskSpec 为脚手架例外，M2 起严格执行不变量 8；④ 契约测试套件暂放 plugins/agent-echo 导出
 - 遗留：**派发未完成**——本 PM 会话是委派会话，平台拒绝其 send_message_to_chat_session（禁止委派会话向其他会话转发），三条消息均未送达；需父会话或用户主会话按任务书向研发A/B/前端研发派发（supervise）。其余：依赖顺序 core→echo→cli，B/C 可先行开发、按需合并依赖分支取类型（只读，不改对方模块）；DESIGN.md 的 M0 细化由 PM 在合并阶段统一回写；better-sqlite3 首次安装需 `pnpm approve-builds better-sqlite3 -y`；跨包类型解析需先 build core（exports 指向 dist）
+
+### 2026-11-21 · Qoder (PM hub) · lockfile 合并策略仲裁 + 三任务进展登记
+- 改动：AGENTS.md（§2 状态更新、§2.1 新增纪律 6 lockfile/共享根文件策略）
+- 决策：① pnpm-lock.yaml 为生成物，各分支可随加依赖提交（追认前端研发 00582f3、研发B lockfile 提交合规），禁手编；合并冲突一律先解源码冲突再 `pnpm install` 重生成，不手工解 lockfile；② pnpm-workspace.yaml allowBuilds 落盘同属必然产物，追认研发A 改动，冲突取并集；③ 合并 main 顺序 core→echo→cli，每次合并后重生成 lockfile + 全量 build/test/typecheck；④ AGENTS.md 日志合并冲突取条目并集
+- 遗留：① 派发已由父会话完成；core（8841f40，29/29 绿）与 echo（9bce5ca，14/14 绿）完成待 PM 验收，cli（3d1d750）已合并两依赖分支、集成/恢复验收在途；② cli 分支的 AGENTS.md 缺研发A 完成日志条目（合并时序所致），PM 合并 main 时按并集规则补齐；③ 研发A 报告 completeRun(ok:false)→failed、recover 旧 run 标 cancelled 等实现语义，PM 验收时对照契约核验；④ DESIGN.md M0 细化仍由 PM 合并阶段统一回写
