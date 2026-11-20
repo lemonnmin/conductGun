@@ -11,3 +11,5 @@ export type {
   TaskEvent,
 } from "./types.js";
 export { newTaskId } from "./ids.js";
+export { TaskQueue } from "./queue.js";
+export { WorkerHost } from "./worker-host.js";
