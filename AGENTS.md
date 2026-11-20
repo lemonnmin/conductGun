@@ -17,11 +17,11 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M0 进行中**（剩余目标已拆解，派发受阻，见 §2.1） |
+| 阶段 | **M0 进行中**（三任务已由父会话派发执行，见 §2.1） |
 | 已完成 | 需求定位、技术选型、调研、设计草案；pnpm monorepo 脚手架（core/router/cli/agent-echo 四包，build/test/typecheck 全绿）；git 已提交并推送 origin/main |
-| 进行中 | t-m0-core / t-m0-echo / t-m0-cli 任务书已就绪（docs/dispatch/2026-11-21-m0-tasks.md），派发受阻待执行 |
-| 下一步 | 由非委派会话按任务书派发 → 三任务回报后 PM 验收、协调合并 main → M0 验收（`cg run` 入队→echo 消费→重启恢复） |
-| 已知阻塞 | PM 会话为委派会话，平台禁止其向其他会话转发消息（send_message_to_chat_session 被拒）；派发须由父会话或用户主会话执行 |
+| 进行中 | **t-m0-echo 已完成待 PM 验收**（cg/echo/t-m0-echo，见同步日志 2026-11-21 研发B）；t-m0-core 契约类型已落码（4ff1e89），队列/WorkerHost 在途；t-m0-cli 已派发 |
+| 下一步 | PM 验收 t-m0-echo → t-m0-core / t-m0-cli 回报后协调合并 main → M0 验收（`cg run` 入队→echo 消费→重启恢复） |
+| 已知阻塞 | 无（原派发阻塞已于 2026-11-21 由父会话代为派发解决） |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
 
@@ -127,3 +127,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：AGENTS.md（§2 状态更新、新增 §2.1 拓扑/所有权/纪律/M0 范围决策）；三份任务书落盘 docs/dispatch/2026-11-21-m0-tasks.md（t-m0-core / t-m0-echo / t-m0-cli，含冻结契约与验收标准）
 - 决策：① M0 冻结契约 v1：TaskSpec/CapabilityCard/AgentPlugin 按 DESIGN §5.2/§4，RunContext/RunResult/TaskQueue/WorkerHost 最小签名由 PM 冻结并写入任务书，研发A 落码 `packages/core/src/types.ts`；② M0 无独立 daemon，CLI 进程内组合（开放问题 5 留 M1+）；③ M0 CLI 直填 TaskSpec 为脚手架例外，M2 起严格执行不变量 8；④ 契约测试套件暂放 plugins/agent-echo 导出
 - 遗留：**派发未完成**——本 PM 会话是委派会话，平台拒绝其 send_message_to_chat_session（禁止委派会话向其他会话转发），三条消息均未送达；需父会话或用户主会话按任务书向研发A/B/前端研发派发（supervise）。其余：依赖顺序 core→echo→cli，B/C 可先行开发、按需合并依赖分支取类型（只读，不改对方模块）；DESIGN.md 的 M0 细化由 PM 在合并阶段统一回写；better-sqlite3 首次安装需 `pnpm approve-builds better-sqlite3 -y`；跨包类型解析需先 build core（exports 指向 dist）
+
+### 2026-11-21 · Qoder (研发B) · t-m0-echo：echo mock 插件 + 可复用契约测试套件（已完成待验收）
+- 改动：plugins/agent-echo（新增 src/echo.ts、src/contract.ts、test/echo.test.ts、vitest.config.ts；src/index.ts 改为插件导出；package.json 加 `./contract` exports 子路径、test 脚本、vitest devDep）；pnpm-lock.yaml（仅 agent-echo 的 vitest 条目——package.json 允许范围内改动的必然产物，按协议登记的范围外必要改动）；合并 cg/core/t-m0-core @ 4ff1e89 取冻结契约类型（只读引用，未改 core 任何文件）；AGENTS.md 状态行更新
+- 决策：① abort 语义二选一选定「返回 { ok:false, summary:"aborted" }」，echo 专属测试钉死；通用契约断言按冻结契约接受 ok:false 或抛出两种实现；② 契约套件签名 `runAgentContractTests(name, factory, opts?)`，失败注入经 `opts.createFailing` 工厂提供（不绑定 echo 私有 failNext），未提供则 skip 该项；③ cancel(runId) 用插件内部 AbortController 与宿主 ctx.signal 合并实现（signal 归宿主所有，插件无法直接 abort），幂等、未知 runId 无操作；④ 套件同时导出 createContractRunHarness / makeContractTaskSpec 供未来插件测试复用；⑤ 主入口不 re-export 契约套件，避免消费方被迫引入 vitest
+- 遗留：① 验收结果：build / typecheck / test 全绿（14 tests：契约 7 + echo 专属 7），`./contract` 子路径 dist 导出已验证可解析；② 未来插件接入方式：import { runAgentContractTests } from "@conductgun/agent-echo/contract"，传 factory 与可选 createFailing；③ 通用 abort/cancel 断言要求插件至少异步检查一次 signal（瞬时同步完成的插件需在实现中保留异步检查点）；④ 套件如需迁出 agent-echo 由 PM 决定，迁移仅涉及 src/contract.ts 与 exports 子路径；⑤ 分支 cg/echo/t-m0-echo @ 17fa365（实现）+ 本条日志提交，未 push，合并 main 由 PM 协调
