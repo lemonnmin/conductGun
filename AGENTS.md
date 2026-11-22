@@ -17,10 +17,10 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M1 进行中**（t-m1-worktree 验收通过待合并；adapters/cli 在途） |
-| 已完成 | M0 全部目标（已合并并推送 origin/main）；M1 环境核实、拆解与冻结契约增量 v1.1（docs/dispatch/2026-11-22-m1-tasks.md）；**t-m1-worktree 验收通过**（core 50/50、根级 95/95 独立重跑全绿） |
-| 进行中 | t-m1-adapters（研发B）、t-m1-cli（前端研发）执行中，回报待父会话转达 |
-| 下一步 | adapters/cli 回报 → PM 验收 → 按 worktree→adapters→cli 合并 main → codex+gemini 真实并行冒烟 |
+| 阶段 | **M1 进行中**（t-m1-worktree、t-m1-adapters 验收通过待合并；cli 在途） |
+| 已完成 | M0 全部目标（已合并并推送 origin/main）；M1 环境核实、拆解与冻结契约增量 v1.1（docs/dispatch/2026-11-22-m1-tasks.md）；**t-m1-worktree 验收通过**（core 50/50、根级 95/95）；**t-m1-adapters 验收通过**（四包 67 tests + echo 14 无回归，--skip-trust 偏差追认） |
+| 进行中 | t-m1-cli（前端研发）阶段一完成（54/54），等依赖合并后跑集成，最终回报待父会话转达 |
+| 下一步 | cli 回报 → PM 验收 → 按 worktree→adapters→cli 合并 main → codex+gemini 真实并行冒烟 |
 | 已知阻塞 | 无 |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
@@ -31,7 +31,7 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 |------|-----------|----------------|
 | PM hub | AGENTS.md / README / docs（研发按协议追加日志，合并冲突由 PM 解决） | 派发与验收 |
 | 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m1-worktree / `cg/core/t-m1-worktree`（验收通过待合并） |
-| 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters / `cg/plugins/t-m1-adapters`（在途） |
+| 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters / `cg/plugins/t-m1-adapters`（验收通过待合并） |
 | 前端研发 | `packages/cli`（cg 命令）及未来 Web | t-m1-cli / `cg/cli/t-m1-cli`（在途） |
 | （冻结） | `packages/router` M2 前不动 | — |
 
@@ -180,3 +180,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：AGENTS.md（§2 状态、所有权表）；无代码改动（验收在 .cg/worktrees/t-m1-worktree 独立复核）
 - 决策：验收结论**通过**。复核证据：① worktree 内独立重跑 core build/typecheck/test 全绿（50/50：M0 29 原样 + worktree 12 + host 集成 9），根级 build/typecheck/test 全绿（95/95）；② 公开面与冻结增量 v1.1 逐字一致（WorktreeManager/WorktreeHandle 签名、WorkerHost opts.worktrees 可选、不传时 M0 路径不变有专属测试钉死）；③ create 幂等持久化方案合规——handle 元数据 <worktreesDir>/<taskId>.json 放 worktree 目录外避免污染 git add -A 的 diff，文件丢失时从 worktree list --porcelain + merge-base 重建有测试覆盖，实例内串行化规避 refs 锁竞争（并发同任务收敛/不同任务互不干扰均有测试）；④ diff 捕获语义合规——ok 且 artifacts 含 "diff" 时 git add -A + git diff --cached baseCommit，已提交+未提交均覆盖、插件原 artifacts 保留、captureDiffInternal 不导出 index；⑤ 并行隔离测试断言两任务 diff 互不混入、崩溃 recover 后复用同一 worktree 且崩溃前文件保留；⑥ 不变量 grep 干净（core src 无 agent 名/LLM/plugins import）；⑦ 改动范围合规（仅 core + AGENTS.md，零新依赖、零 lockfile 变更），主工作区验收后零改动，M0 遗留 worktree/分支未动
 - 遗留：① 合并 main 仍按 worktree→adapters→cli 顺序，待 adapters/cli 验收齐后执行（研发A 分支含 AGENTS.md 更新，合并时按纪律 6 取日志并集）；② diff 捕获 maxBuffer 16MB，超大 diff 会 failRun（M1 规模无风险，M2 视需要调整）；③ 适配器侧注意 ctx.workdir 为 worktree 绝对路径、worktree 事件 kind="worktree"；④ macOS tmpdir 符号链接坑位（realpathSync 归一化）已记录供后续测试参考
+
+### 2026-11-22 · Qoder (PM hub) · t-m1-adapters 验收通过 + --skip-trust 偏差追认
+- 改动：AGENTS.md（§2 状态、所有权表）；无代码改动（验收在 .cg/worktrees/t-m1-adapters 独立复核）
+- 决策：验收结论**通过**。复核证据：① worktree 内独立重跑四包 build/typecheck/test 全绿（67 tests：cli-utils 16 + claude 16 + gemini 17 + codex 18，契约套件 7 项 ×3 全过，stub spawner + createFailing），echo 14/14 无回归；② 三 card 与 §3.5 冻结值逐字段一致且有专属测试钉死；③ prompt 仅由 buildAgentPrompt(spec) 从 TaskSpec 结构化字段拼装（含 constraints 透传），源码与测试均无用户原文通道；④ abort 时序测试断言 killSignals=["SIGTERM","SIGKILL"]（ignoreTerm stub + 可注入宽限），cancel 幂等经共享 createRunRegistry（宿主 signal 合并）；⑤ healthCheck 零凭据泄露——codex login status 输出不回显、gemini 仅查凭据文件/环境变量存在性、detail 全为固定文案；本机真实只读探测：codex ok（已登录）、gemini ok（OAuth 凭据在）、claude {ok:false,"claude CLI 未安装"}，零付费；⑥ codex 命令行断言含 -s workspace-write 沙箱、gemini 断言不含 -w/--worktree（隔离归 core）、cwd=ctx.workdir 均有测试；⑦ 改动范围合规（仅 plugins/* + lockfile + AGENTS.md，echo/core/cli/router 零改动），lockfile 按纪律 6 合规。**偏差仲裁：gemini --skip-trust 追认**——新建任务 worktree 是未信任目录，folder trust 会拦截 headless，该 flag 为 M1 验收路径所必需；flag 存在性已本机 --help 核实；不削弱隔离（worktree 仍归 core）、不涉契约签名，属任务书允许的「本机校准」范畴
+- 遗留：① 合并 main 仍按 worktree→adapters→cli，待 cli 最终回报验收后执行；② claude 真实 flag 校准留待安装后（stream-json 可能需 --verbose）；③ codex alpha JSONL / gemini JSON 摘要提取为假设，PM 真实冒烟时如不符校准 extractSummary（不影响 ok/failed 判定）；④ gemini/claude 无沙箱，禁 push 靠 constraints + 冒烟后核查远端（§3.4 残留风险已知）；⑤ 前端接线：import claudePlugin/codexPlugin/geminiPlugin 默认实例即真实 spawn，单测注入用 @conductgun/agent-cli-utils/testing
