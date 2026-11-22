@@ -17,10 +17,10 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M1 规划完成，待派发**（用户确认按原路线图推进，daemon RPC 不在 M1） |
+| 阶段 | **M1 进行中**（三任务已派发；研发B 适配器完成待验收） |
 | 已完成 | M0 全部目标（已合并并推送 origin/main）；M1 环境核实（codex/gemini 已安装已登录、claude 未安装）；M1 拆解与冻结契约增量 v1.1，任务书落盘 docs/dispatch/2026-11-22-m1-tasks.md |
-| 进行中 | t-m1-worktree 已完成（分支 `cg/core/t-m1-worktree`，待 PM 验收）；t-m1-adapters / t-m1-cli 已派发执行中 |
-| 下一步 | 父会话按任务书派发 → 研发并行开发 → PM 验收（含 codex+gemini 真实并行冒烟）→ 合并 main |
+| 进行中 | **三任务均已完成待 PM 验收**：t-m1-worktree（cg/core/t-m1-worktree）、t-m1-adapters（cg/plugins/t-m1-adapters）、t-m1-cli（cg/cli/t-m1-cli），详见同步日志 2026-11-22 各研发条目 |
+| 下一步 | PM 按 worktree→adapters→cli 顺序验收合并 main → codex+gemini 真实并行冒烟验收 |
 | 已知阻塞 | 无 |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
@@ -31,7 +31,7 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 |------|-----------|----------------|
 | PM hub | AGENTS.md / README / docs（研发按协议追加日志，合并冲突由 PM 解决） | 派发与验收 |
 | 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m1-worktree / `cg/core/t-m1-worktree`（已完成待验收） |
-| 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters / `cg/plugins/t-m1-adapters`（待派发） |
+| 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters / `cg/plugins/t-m1-adapters`（已完成待验收） |
 | 前端研发 | `packages/cli`（cg 命令）及未来 Web | t-m1-cli / `cg/cli/t-m1-cli`（待派发） |
 | （冻结） | `packages/router` M2 前不动 | — |
 
@@ -180,3 +180,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：packages/core/src/worktree.ts（新）、worker-host.ts（opts.worktrees 可选集成）、index.ts（导出 WorktreeManager/WorktreeHandle）；packages/core/test/helpers.ts（git fixture + run result 读取）、worktree.test.ts（12 用例）、worker-host-worktree.test.ts（9 用例）。零新依赖（git 走 node:child_process execFile）
 - 决策：公开面与冻结增量 v1.1 逐字一致，无偏离。实现细节：① handle 元数据持久化在 <worktreesDir>/<taskId>.json（worktree 目录之外，避免混入 git add -A 的 diff），幂等 create 据此复用；handle 文件丢失但 worktree 存在时从 git worktree list --porcelain + merge-base 重建；② 实例内 promise 链串行化 create，规避并发 git worktree add 的 refs 锁竞争（不同任务互不干扰有测试钉死）；③ diff 捕获 = worktree 内 git add -A + git diff --cached <baseCommit>（maxBuffer 16MB），同时覆盖插件已提交与未提交改动，追加进 artifacts、插件原 artifacts 保留；捕获失败走 failRun；④ 不传 worktrees 时代码路径与 M0 一致（29 用例原样全绿）；⑤ list() 返回有 handle 文件且目录存在的受管 worktree
 - 遗留：① 分支 cg/core/t-m1-worktree @ 8476816（实现）+ 本条日志 commit，未 push，待 PM 验收；合并顺序 worktree→adapters→cli 不变。② 测试坑位：macOS tmpdir 是 /var→/private/var 符号链接，git fixture 必须 realpathSync 归一化，否则 porcelain 路径断言失败（helpers.makeGitRepo 已处理）。③ 适配器（研发B）注意：ctx.workdir 启用隔离时是任务 worktree 绝对路径，子进程 cwd 必须用它；worktree 事件 kind="worktree" message=路径。④ M1 无自动清理/无 remove API（PM 仲裁），成功失败均保留 worktree；清理策略待用户决定。⑤ 验收证据：core 50/50 绿（M0 29 原样 + 新增 21），根级 95/95 绿，build/typecheck 全绿；e2e 测试断言 git worktree list 可见任务 worktree、diff artifact 含插件写入文件、主工作区零改动
+
+### 2026-11-22 · Qoder (研发B) · t-m1-adapters：claude/codex/gemini headless 适配器 + 共享 cli-utils（已完成待验收）
+- 改动：新建 plugins/agent-claude、plugins/agent-codex、plugins/agent-gemini、plugins/agent-cli-utils（四包均 exports 指 dist、自带 typescript/@types/node/vitest devDeps；适配器 devDep 引用 @conductgun/agent-echo 仅为 import 契约套件）；pnpm-lock.yaml（新包依赖的必然产物，纪律 6）；AGENTS.md 状态行更新。**agent-echo/core/cli/router 零改动**
+- 决策：① 三 card 逐字段按 §3.5 冻结值落码并有专属测试钉死。② 最终命令行（本机 --help 已校准）：codex `exec -C <workdir> -s workspace-write --skip-git-repo-check --json <prompt>`；gemini `-p <prompt> --approval-mode yolo -o json --skip-trust`；claude `-p <prompt> --output-format stream-json`。**与 §0 的唯一偏差：gemini 加 `--skip-trust`**——新建任务 worktree 是未信任目录，headless 会被 folder trust 拦截，flag 存在性已核实；codex/gemini 自带 --worktree/-w 一律不用（隔离归 core）。③ prompt 仅由 buildAgentPrompt(spec) 从 TaskSpec 结构化字段拼装（goal/context/instructions/constraints/acceptanceCriteria/assumptions），无任何用户原文通道；constraints 原样透传。④ abort→SIGTERM→5s（killGraceMs 可注入）→SIGKILL，返回 { ok:false, summary:"aborted" }；cancel 经共享 createRunRegistry（宿主 signal 合并 + 幂等）。⑤ healthCheck 只读零付费：which 探二进制；codex 加 `login status`（不回显任何输出内容）；gemini 查 ~/.gemini/oauth_creds.json 存在性或 GEMINI_API_KEY 环境变量存在性（绝不读/打印凭据内容，homeDir 可注入便于测试）；claude 未安装→{ ok:false, detail:"claude CLI 未安装" }，已安装分支的登录态探测留待真实校准。⑥ 摘要提取：codex 扫 JSONL 取最后 item.text/text/message；gemini 解析整体 JSON 取 response；claude 取 type=result 的 result 字段（alpha/未安装 schema 为假设，冒烟时校准）。⑦ 共享包 cli-utils 导出 runHeadless/nodeSpawn/Spawner 类型/buildAgentPrompt/probeBinary/createRunRegistry，测试 stub 经 `./testing` 子路径导出 createScriptedSpawner（可脚本化 stdout/stderr/exitCode/hang/ignoreTerm/spawnError，记录 calls 与 killSignals）
+- 遗留：① 验收结果：四包 build/typecheck/test 全绿（67 tests：cli-utils 16 + claude 16 + gemini 17 + codex 18，含契约套件 7 项 ×3 全过）；echo 14/14 无回归；claude healthCheck 本机真实探测返回 { ok:false, detail:"claude CLI 未安装" }（唯一真实探测，零付费）。② 分支 cg/plugins/t-m1-adapters @ 39f5010（实现）+ 本条日志提交，未 push；合并 main 由 PM 按 worktree→adapters→cli 顺序协调。③ claude 真实 flag 校准留待安装后（stream-json 可能需 --verbose，届时以 --help 校准并更新 stub 预期）；codex alpha 版 JSONL schema 若与摘要提取假设不符，冒烟时校准 extractSummary。④ gemini/claude 无沙箱，禁 push 靠 constraints 文本 + 验收核查远端（§3.4 残留风险已知）；适配器自身无任何远端写操作。⑤ 前端研发接 cg agents/drain 时直接 import 各包 claudePlugin/codexPlugin/geminiPlugin（默认实例即真实 nodeSpawn）；单测注入 spawner 用 @conductgun/agent-cli-utils/testing。⑥ 真实付费冒烟不在本任务内，由 PM 验收阶段执行
