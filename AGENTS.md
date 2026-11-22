@@ -17,10 +17,10 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M0 已完成**（三任务验收通过，已合并并推送 origin/main） |
-| 已完成 | 需求定位、技术选型、调研、设计草案；monorepo 脚手架；**M0 全部目标**：任务模型+SQLite 队列+WorkerHost（t-m0-core）、echo 插件+契约套件（t-m0-echo）、cg run/status/logs+重启恢复（t-m0-cli）；根级 74/74 测试绿 + M0 闭环冒烟通过 |
-| 进行中 | 无 |
-| 下一步 | M1（claude/codex/gemini headless 适配器 + worktree 隔离），待用户/父会话排期派发 |
+| 阶段 | **M1 规划完成，待派发**（用户确认按原路线图推进，daemon RPC 不在 M1） |
+| 已完成 | M0 全部目标（已合并并推送 origin/main）；M1 环境核实（codex/gemini 已安装已登录、claude 未安装）；M1 拆解与冻结契约增量 v1.1，任务书落盘 docs/dispatch/2026-11-22-m1-tasks.md |
+| 进行中 | 无（三任务待父会话派发：t-m1-worktree / t-m1-adapters / t-m1-cli） |
+| 下一步 | 父会话按任务书派发 → 研发并行开发 → PM 验收（含 codex+gemini 真实并行冒烟）→ 合并 main |
 | 已知阻塞 | 无 |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
@@ -30,9 +30,9 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 | 角色 | 模块所有权 | 当前任务 / 分支 |
 |------|-----------|----------------|
 | PM hub | AGENTS.md / README / docs（研发按协议追加日志，合并冲突由 PM 解决） | 派发与验收 |
-| 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m0-core / `cg/core/t-m0-core` |
-| 研发B | `plugins/*`（echo 插件、契约测试套件） | t-m0-echo / `cg/echo/t-m0-echo` |
-| 前端研发 | `packages/cli`（cg 命令）及未来 Web | t-m0-cli / `cg/cli/t-m0-cli` |
+| 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m1-worktree / `cg/core/t-m1-worktree`（待派发） |
+| 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters / `cg/plugins/t-m1-adapters`（待派发） |
+| 前端研发 | `packages/cli`（cg 命令）及未来 Web | t-m1-cli / `cg/cli/t-m1-cli`（待派发） |
 | （冻结） | `packages/router` M2 前不动 | — |
 
 **协作纪律（派发任务时随消息下达）：**
@@ -47,6 +47,13 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - M0 不做独立 daemon：CLI 进程内组合 TaskQueue + WorkerHost；daemon RPC 选型（DESIGN 开放问题 5）留 M1+。
 - M0 CLI 直填 TaskSpec（用户原文进 goal/instructions）是脚手架例外——echo 为 mock、无真实下游 agent；M2 Router 落地后严格执行不变量 8。
 - 插件契约测试套件暂放 `plugins/agent-echo` 导出，供未来插件复用；如需迁移由 PM 决定。
+
+**M1 范围决策（PM 冻结，2026-11-22，详见 docs/dispatch/2026-11-22-m1-tasks.md）：**
+- M1 = claude/codex/gemini headless 适配器 + worktree 隔离；daemon RPC 不做（开放问题 5 留置），CLI 直填 TaskSpec 例外延续到 M2。
+- 冻结契约增量 v1.1 只加不改：core 新增 WorktreeManager（create 按 taskId 幂等、分支 cg/<agentId>/<taskId>、baseCommit 记 diff 基线）；WorkerHost opts 加可选 worktrees（不传时 M0 行为不变）；RunContext.workdir 启用隔离时为任务专属 worktree 路径。
+- worktree M1 不自动清理（成功保留供审查、失败保留供排查），清理策略待用户决定；禁 push 落地 = constraints 固定注入 + codex workspace-write 沙箱，gemini/claude 残留风险记录在案。
+- 单测零真实 CLI/零网络/零付费（spawn 注入 stub）；真实冒烟仅作 PM 验收证据（codex+gemini 并行互不冲突任务 + 可审查 diff）。
+- 预批准研发B 可选新增 `plugins/agent-cli-utils` 共享 spawn 工具包。
 
 ## 3. 架构不变量（不得违反）
 
@@ -163,3 +170,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：AGENTS.md §2 状态行；无代码改动
 - 决策：用户明确要求 push，已执行 `git push origin main`（借 gh 凭据，见 2026-11-20 日志坑位①），5fd5d2d..c15e603 推送成功，M0 全部成果已上远程
 - 遗留：worktree/分支清理与 M1 排期仍待用户决定
+
+### 2026-11-22 · Qoder (PM hub) · M1 规划：环境核实 + 拆解 + 冻结契约增量 v1.1（待派发）
+- 改动：docs/dispatch/2026-11-22-m1-tasks.md（新任务书：三任务完整消息正文 + 冻结增量 + 冒烟脚本）；AGENTS.md（§2 状态、§2.1 所有权表当前任务列 + M1 范围决策）
+- 决策：① 环境只读核实——codex 0.171.0-alpha.13（ChatGPT 已登录）、gemini 0.68.0（oauth-personal）做真实端到端冒烟；claude 未安装，stub spawn 单测 + 契约套件验收，healthCheck 友好报「未安装」；未输出任何凭据内容。② 拆解：t-m1-worktree（研发A，core WorktreeManager + WorkerHost workdir 升级）、t-m1-adapters（研发B，三适配器 + 复用契约套件，spawn 可注入）、t-m1-cli（前端，cg agents / run --agent / --no-wait / drain）；A/B 并行，C 后期合并两分支；合并顺序 worktree→adapters→cli。③ 冻结增量 v1.1 只加不改（WorktreeManager 签名、WorkerHost opts.worktrees、workdir 语义、三 card 草案值、CLI 命令形态），落码位置与负责人已写入任务书。④ worktree M1 不自动清理、create 按 taskId 幂等（recover 复用）；禁 push = constraints 注入 + codex 沙箱，gemini/claude 残留风险记录在案。⑤ 单测零真实 CLI/网络/付费；真实冒烟为 PM 验收证据（codex+gemini 各建 docs/smoke/ 下不同文件，记录任务 id/分支/diff）。⑥ 预批准 plugins/agent-cli-utils 共享工具包。⑦ daemon RPC 与 Router 均不在 M1，直填例外延续到 M2
+- 遗留：① 派发由父会话执行（PM 是委派会话不能发消息），三条消息正文在任务书 §4，supervise；② M0 遗留 t-m0-* worktree/分支继续保留，任何会话不得擅动（建议保留至 M1 结束）；③ codex 为 alpha 版，适配器 flag 以本机 --help 校准、偏差记日志；④ claude 真实 flag 校准留待安装后；⑤ 真实冒烟产生少量付费调用，已限定为两个最小任务
