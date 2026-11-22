@@ -12,14 +12,15 @@ const consoleIo: CommandIo = { print: (line) => console.log(line) };
 
 const TERMINAL_STATUSES = new Set(["done", "failed", "cancelled"]);
 const POLL_INTERVAL_MS = 50;
-const RUN_TIMEOUT_MS = 30_000;
+const ECHO_TIMEOUT_MS = 30_000;
+const REAL_AGENT_TIMEOUT_MS = 600_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForTerminal(queue: TaskQueue, taskId: string): Promise<TaskRecord | null> {
-  const deadline = Date.now() + RUN_TIMEOUT_MS;
+async function waitForTerminal(queue: TaskQueue, taskId: string, timeoutMs: number): Promise<TaskRecord | null> {
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const task = queue.getTask(taskId);
     if (task && TERMINAL_STATUSES.has(task.status)) return task;
@@ -28,21 +29,36 @@ async function waitForTerminal(queue: TaskQueue, taskId: string): Promise<TaskRe
   return null;
 }
 
+export interface RunOptions {
+  agent?: string;
+  noWait?: boolean;
+  timeoutSec?: number;
+}
+
 export async function runCommand(
   text: string,
   dbPath: string,
   io: CommandIo = consoleIo,
   plugins: AgentPlugin[] = [echoPlugin],
+  opts: RunOptions = {},
 ): Promise<number> {
   const queue = new TaskQueue(dbPath);
   try {
     queue.recover();
-    const record = queue.enqueue(buildTaskSpec(newTaskId(), text));
+    const record = queue.enqueue(buildTaskSpec(newTaskId(), text, opts.agent));
+    if (opts.noWait) {
+      io.print(`已入队 ${record.id}，稍后运行 cg drain 消费`);
+      return 0;
+    }
     for (const plugin of plugins) queue.registerAgent(plugin.card);
     const host = new WorkerHost(queue, plugins);
     host.start();
     try {
-      const task = await waitForTerminal(queue, record.id);
+      const isRealAgent = opts.agent !== undefined && opts.agent !== "echo";
+      const timeoutMs = opts.timeoutSec !== undefined
+        ? opts.timeoutSec * 1000
+        : isRealAgent ? REAL_AGENT_TIMEOUT_MS : ECHO_TIMEOUT_MS;
+      const task = await waitForTerminal(queue, record.id, timeoutMs);
       if (!task) {
         io.print(`任务 ${record.id} 超时未完成，可用 cg logs ${record.id} 查看详情`);
         return 1;
