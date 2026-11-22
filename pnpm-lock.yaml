@@ -190,9 +190,18 @@ importers:
 
   packages/cli:
     dependencies:
+      '@conductgun/agent-claude':
+        specifier: workspace:*
+        version: link:../../plugins/agent-claude
+      '@conductgun/agent-codex':
+        specifier: workspace:*
+        version: link:../../plugins/agent-codex
       '@conductgun/agent-echo':
         specifier: workspace:*
         version: link:../../plugins/agent-echo
+      '@conductgun/agent-gemini':
+        specifier: workspace:*
+        version: link:../../plugins/agent-gemini
       '@conductgun/core':
         specifier: workspace:*
         version: link:../core

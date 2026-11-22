@@ -15,7 +15,10 @@
     "test": "vitest run --root ../.. packages/cli/test"
   },
   "dependencies": {
+    "@conductgun/agent-claude": "workspace:*",
+    "@conductgun/agent-codex": "workspace:*",
     "@conductgun/agent-echo": "workspace:*",
+    "@conductgun/agent-gemini": "workspace:*",
     "@conductgun/core": "workspace:*"
   },
   "devDependencies": {
