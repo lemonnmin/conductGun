@@ -19,7 +19,7 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 |----|------|
 | 阶段 | **M1 规划完成，待派发**（用户确认按原路线图推进，daemon RPC 不在 M1） |
 | 已完成 | M0 全部目标（已合并并推送 origin/main）；M1 环境核实（codex/gemini 已安装已登录、claude 未安装）；M1 拆解与冻结契约增量 v1.1，任务书落盘 docs/dispatch/2026-11-22-m1-tasks.md |
-| 进行中 | 无（三任务待父会话派发：t-m1-worktree / t-m1-adapters / t-m1-cli） |
+| 进行中 | t-m1-worktree 已完成（分支 `cg/core/t-m1-worktree`，待 PM 验收）；t-m1-adapters / t-m1-cli 已派发执行中 |
 | 下一步 | 父会话按任务书派发 → 研发并行开发 → PM 验收（含 codex+gemini 真实并行冒烟）→ 合并 main |
 | 已知阻塞 | 无 |
 
@@ -30,7 +30,7 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 | 角色 | 模块所有权 | 当前任务 / 分支 |
 |------|-----------|----------------|
 | PM hub | AGENTS.md / README / docs（研发按协议追加日志，合并冲突由 PM 解决） | 派发与验收 |
-| 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m1-worktree / `cg/core/t-m1-worktree`（待派发） |
+| 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m1-worktree / `cg/core/t-m1-worktree`（已完成待验收） |
 | 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters / `cg/plugins/t-m1-adapters`（待派发） |
 | 前端研发 | `packages/cli`（cg 命令）及未来 Web | t-m1-cli / `cg/cli/t-m1-cli`（待派发） |
 | （冻结） | `packages/router` M2 前不动 | — |
@@ -175,3 +175,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：docs/dispatch/2026-11-22-m1-tasks.md（新任务书：三任务完整消息正文 + 冻结增量 + 冒烟脚本）；AGENTS.md（§2 状态、§2.1 所有权表当前任务列 + M1 范围决策）
 - 决策：① 环境只读核实——codex 0.171.0-alpha.13（ChatGPT 已登录）、gemini 0.68.0（oauth-personal）做真实端到端冒烟；claude 未安装，stub spawn 单测 + 契约套件验收，healthCheck 友好报「未安装」；未输出任何凭据内容。② 拆解：t-m1-worktree（研发A，core WorktreeManager + WorkerHost workdir 升级）、t-m1-adapters（研发B，三适配器 + 复用契约套件，spawn 可注入）、t-m1-cli（前端，cg agents / run --agent / --no-wait / drain）；A/B 并行，C 后期合并两分支；合并顺序 worktree→adapters→cli。③ 冻结增量 v1.1 只加不改（WorktreeManager 签名、WorkerHost opts.worktrees、workdir 语义、三 card 草案值、CLI 命令形态），落码位置与负责人已写入任务书。④ worktree M1 不自动清理、create 按 taskId 幂等（recover 复用）；禁 push = constraints 注入 + codex 沙箱，gemini/claude 残留风险记录在案。⑤ 单测零真实 CLI/网络/付费；真实冒烟为 PM 验收证据（codex+gemini 各建 docs/smoke/ 下不同文件，记录任务 id/分支/diff）。⑥ 预批准 plugins/agent-cli-utils 共享工具包。⑦ daemon RPC 与 Router 均不在 M1，直填例外延续到 M2
 - 遗留：① 派发由父会话执行（PM 是委派会话不能发消息），三条消息正文在任务书 §4，supervise；② M0 遗留 t-m0-* worktree/分支继续保留，任何会话不得擅动（建议保留至 M1 结束）；③ codex 为 alpha 版，适配器 flag 以本机 --help 校准、偏差记日志；④ claude 真实 flag 校准留待安装后；⑤ 真实冒烟产生少量付费调用，已限定为两个最小任务
+
+### 2026-11-22 · 研发A (Qoder 委派会话) · t-m1-worktree：WorktreeManager + WorkerHost worktree 隔离与 diff artifact
+- 改动：packages/core/src/worktree.ts（新）、worker-host.ts（opts.worktrees 可选集成）、index.ts（导出 WorktreeManager/WorktreeHandle）；packages/core/test/helpers.ts（git fixture + run result 读取）、worktree.test.ts（12 用例）、worker-host-worktree.test.ts（9 用例）。零新依赖（git 走 node:child_process execFile）
+- 决策：公开面与冻结增量 v1.1 逐字一致，无偏离。实现细节：① handle 元数据持久化在 <worktreesDir>/<taskId>.json（worktree 目录之外，避免混入 git add -A 的 diff），幂等 create 据此复用；handle 文件丢失但 worktree 存在时从 git worktree list --porcelain + merge-base 重建；② 实例内 promise 链串行化 create，规避并发 git worktree add 的 refs 锁竞争（不同任务互不干扰有测试钉死）；③ diff 捕获 = worktree 内 git add -A + git diff --cached <baseCommit>（maxBuffer 16MB），同时覆盖插件已提交与未提交改动，追加进 artifacts、插件原 artifacts 保留；捕获失败走 failRun；④ 不传 worktrees 时代码路径与 M0 一致（29 用例原样全绿）；⑤ list() 返回有 handle 文件且目录存在的受管 worktree
+- 遗留：① 分支 cg/core/t-m1-worktree @ 8476816（实现）+ 本条日志 commit，未 push，待 PM 验收；合并顺序 worktree→adapters→cli 不变。② 测试坑位：macOS tmpdir 是 /var→/private/var 符号链接，git fixture 必须 realpathSync 归一化，否则 porcelain 路径断言失败（helpers.makeGitRepo 已处理）。③ 适配器（研发B）注意：ctx.workdir 启用隔离时是任务 worktree 绝对路径，子进程 cwd 必须用它；worktree 事件 kind="worktree" message=路径。④ M1 无自动清理/无 remove API（PM 仲裁），成功失败均保留 worktree；清理策略待用户决定。⑤ 验收证据：core 50/50 绿（M0 29 原样 + 新增 21），根级 95/95 绿，build/typecheck 全绿；e2e 测试断言 git worktree list 可见任务 worktree、diff artifact 含插件写入文件、主工作区零改动
