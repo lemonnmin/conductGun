@@ -1,5 +1,6 @@
 import { appendEventInternal, TaskQueue } from "./queue.js";
 import type { AgentPlugin, RunContext, TaskRecord } from "./types.js";
+import { captureDiffInternal, type WorktreeHandle, type WorktreeManager } from "./worktree.js";
 
 interface InflightRun {
   promise: Promise<void>;
@@ -10,15 +11,21 @@ export class WorkerHost {
   private readonly queue: TaskQueue;
   private readonly plugins: AgentPlugin[];
   private readonly pollIntervalMs: number;
+  private readonly worktrees: WorktreeManager | undefined;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopping = false;
   private readonly activeCounts = new Map<string, number>();
   private readonly inflight = new Map<string, InflightRun>();
 
-  constructor(queue: TaskQueue, plugins: AgentPlugin[], opts?: { pollIntervalMs?: number }) {
+  constructor(
+    queue: TaskQueue,
+    plugins: AgentPlugin[],
+    opts?: { pollIntervalMs?: number; worktrees?: WorktreeManager },
+  ) {
     this.queue = queue;
     this.plugins = plugins;
     this.pollIntervalMs = opts?.pollIntervalMs ?? 200;
+    this.worktrees = opts?.worktrees;
   }
 
   start(): void {
@@ -59,25 +66,39 @@ export class WorkerHost {
     const agentId = plugin.card.id;
     this.activeCounts.set(agentId, (this.activeCounts.get(agentId) ?? 0) + 1);
     const controller = new AbortController();
-    const ctx: RunContext = {
-      runId,
-      taskId: task.id,
-      workdir: process.cwd(),
-      signal: controller.signal,
-      reportEvent: (kind, message) => {
-        appendEventInternal(this.queue, {
-          taskId: task.id,
-          runId,
-          ts: Date.now(),
-          kind,
-          message,
-        });
-      },
-      heartbeat: () => {},
-    };
     const promise = (async () => {
       try {
-        const result = await plugin.execute(task.spec, ctx);
+        let workdir = process.cwd();
+        let handle: WorktreeHandle | null = null;
+        if (this.worktrees) {
+          handle = await this.worktrees.create(agentId, task.id);
+          workdir = handle.path;
+        }
+        const ctx: RunContext = {
+          runId,
+          taskId: task.id,
+          workdir,
+          signal: controller.signal,
+          reportEvent: (kind, message) => {
+            appendEventInternal(this.queue, {
+              taskId: task.id,
+              runId,
+              ts: Date.now(),
+              kind,
+              message,
+            });
+          },
+          heartbeat: () => {},
+        };
+        if (handle) ctx.reportEvent("worktree", handle.path);
+        let result = await plugin.execute(task.spec, ctx);
+        if (handle && result.ok && task.spec.artifacts.includes("diff")) {
+          const content = await captureDiffInternal(handle);
+          result = {
+            ...result,
+            artifacts: [...(result.artifacts ?? []), { kind: "diff", content }],
+          };
+        }
         this.queue.completeRun(runId, result);
       } catch (err) {
         this.queue.failRun(runId, err instanceof Error ? err.message : String(err));
