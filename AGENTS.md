@@ -17,10 +17,10 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M1 规划完成，待派发**（用户确认按原路线图推进，daemon RPC 不在 M1） |
+| 阶段 | **M1 进行中**（三任务已派发；研发B 适配器完成待验收） |
 | 已完成 | M0 全部目标（已合并并推送 origin/main）；M1 环境核实（codex/gemini 已安装已登录、claude 未安装）；M1 拆解与冻结契约增量 v1.1，任务书落盘 docs/dispatch/2026-11-22-m1-tasks.md |
-| 进行中 | 无（三任务待父会话派发：t-m1-worktree / t-m1-adapters / t-m1-cli） |
-| 下一步 | 父会话按任务书派发 → 研发并行开发 → PM 验收（含 codex+gemini 真实并行冒烟）→ 合并 main |
+| 进行中 | **t-m1-adapters 已完成待 PM 验收**（cg/plugins/t-m1-adapters，见同步日志 2026-11-22 研发B）；t-m1-worktree / t-m1-cli 在途（以各自回报为准） |
+| 下一步 | PM 验收 t-m1-adapters → 三任务完成后按 worktree→adapters→cli 顺序合并 main → codex+gemini 真实并行冒烟验收 |
 | 已知阻塞 | 无 |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
@@ -31,7 +31,7 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 |------|-----------|----------------|
 | PM hub | AGENTS.md / README / docs（研发按协议追加日志，合并冲突由 PM 解决） | 派发与验收 |
 | 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m1-worktree / `cg/core/t-m1-worktree`（待派发） |
-| 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters / `cg/plugins/t-m1-adapters`（待派发） |
+| 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters / `cg/plugins/t-m1-adapters`（已完成待验收） |
 | 前端研发 | `packages/cli`（cg 命令）及未来 Web | t-m1-cli / `cg/cli/t-m1-cli`（待派发） |
 | （冻结） | `packages/router` M2 前不动 | — |
 
@@ -175,3 +175,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：docs/dispatch/2026-11-22-m1-tasks.md（新任务书：三任务完整消息正文 + 冻结增量 + 冒烟脚本）；AGENTS.md（§2 状态、§2.1 所有权表当前任务列 + M1 范围决策）
 - 决策：① 环境只读核实——codex 0.171.0-alpha.13（ChatGPT 已登录）、gemini 0.68.0（oauth-personal）做真实端到端冒烟；claude 未安装，stub spawn 单测 + 契约套件验收，healthCheck 友好报「未安装」；未输出任何凭据内容。② 拆解：t-m1-worktree（研发A，core WorktreeManager + WorkerHost workdir 升级）、t-m1-adapters（研发B，三适配器 + 复用契约套件，spawn 可注入）、t-m1-cli（前端，cg agents / run --agent / --no-wait / drain）；A/B 并行，C 后期合并两分支；合并顺序 worktree→adapters→cli。③ 冻结增量 v1.1 只加不改（WorktreeManager 签名、WorkerHost opts.worktrees、workdir 语义、三 card 草案值、CLI 命令形态），落码位置与负责人已写入任务书。④ worktree M1 不自动清理、create 按 taskId 幂等（recover 复用）；禁 push = constraints 注入 + codex 沙箱，gemini/claude 残留风险记录在案。⑤ 单测零真实 CLI/网络/付费；真实冒烟为 PM 验收证据（codex+gemini 各建 docs/smoke/ 下不同文件，记录任务 id/分支/diff）。⑥ 预批准 plugins/agent-cli-utils 共享工具包。⑦ daemon RPC 与 Router 均不在 M1，直填例外延续到 M2
 - 遗留：① 派发由父会话执行（PM 是委派会话不能发消息），三条消息正文在任务书 §4，supervise；② M0 遗留 t-m0-* worktree/分支继续保留，任何会话不得擅动（建议保留至 M1 结束）；③ codex 为 alpha 版，适配器 flag 以本机 --help 校准、偏差记日志；④ claude 真实 flag 校准留待安装后；⑤ 真实冒烟产生少量付费调用，已限定为两个最小任务
+
+### 2026-11-22 · Qoder (研发B) · t-m1-adapters：claude/codex/gemini headless 适配器 + 共享 cli-utils（已完成待验收）
+- 改动：新建 plugins/agent-claude、plugins/agent-codex、plugins/agent-gemini、plugins/agent-cli-utils（四包均 exports 指 dist、自带 typescript/@types/node/vitest devDeps；适配器 devDep 引用 @conductgun/agent-echo 仅为 import 契约套件）；pnpm-lock.yaml（新包依赖的必然产物，纪律 6）；AGENTS.md 状态行更新。**agent-echo/core/cli/router 零改动**
+- 决策：① 三 card 逐字段按 §3.5 冻结值落码并有专属测试钉死。② 最终命令行（本机 --help 已校准）：codex `exec -C <workdir> -s workspace-write --skip-git-repo-check --json <prompt>`；gemini `-p <prompt> --approval-mode yolo -o json --skip-trust`；claude `-p <prompt> --output-format stream-json`。**与 §0 的唯一偏差：gemini 加 `--skip-trust`**——新建任务 worktree 是未信任目录，headless 会被 folder trust 拦截，flag 存在性已核实；codex/gemini 自带 --worktree/-w 一律不用（隔离归 core）。③ prompt 仅由 buildAgentPrompt(spec) 从 TaskSpec 结构化字段拼装（goal/context/instructions/constraints/acceptanceCriteria/assumptions），无任何用户原文通道；constraints 原样透传。④ abort→SIGTERM→5s（killGraceMs 可注入）→SIGKILL，返回 { ok:false, summary:"aborted" }；cancel 经共享 createRunRegistry（宿主 signal 合并 + 幂等）。⑤ healthCheck 只读零付费：which 探二进制；codex 加 `login status`（不回显任何输出内容）；gemini 查 ~/.gemini/oauth_creds.json 存在性或 GEMINI_API_KEY 环境变量存在性（绝不读/打印凭据内容，homeDir 可注入便于测试）；claude 未安装→{ ok:false, detail:"claude CLI 未安装" }，已安装分支的登录态探测留待真实校准。⑥ 摘要提取：codex 扫 JSONL 取最后 item.text/text/message；gemini 解析整体 JSON 取 response；claude 取 type=result 的 result 字段（alpha/未安装 schema 为假设，冒烟时校准）。⑦ 共享包 cli-utils 导出 runHeadless/nodeSpawn/Spawner 类型/buildAgentPrompt/probeBinary/createRunRegistry，测试 stub 经 `./testing` 子路径导出 createScriptedSpawner（可脚本化 stdout/stderr/exitCode/hang/ignoreTerm/spawnError，记录 calls 与 killSignals）
+- 遗留：① 验收结果：四包 build/typecheck/test 全绿（67 tests：cli-utils 16 + claude 16 + gemini 17 + codex 18，含契约套件 7 项 ×3 全过）；echo 14/14 无回归；claude healthCheck 本机真实探测返回 { ok:false, detail:"claude CLI 未安装" }（唯一真实探测，零付费）。② 分支 cg/plugins/t-m1-adapters @ 39f5010（实现）+ 本条日志提交，未 push；合并 main 由 PM 按 worktree→adapters→cli 顺序协调。③ claude 真实 flag 校准留待安装后（stream-json 可能需 --verbose，届时以 --help 校准并更新 stub 预期）；codex alpha 版 JSONL schema 若与摘要提取假设不符，冒烟时校准 extractSummary。④ gemini/claude 无沙箱，禁 push 靠 constraints 文本 + 验收核查远端（§3.4 残留风险已知）；适配器自身无任何远端写操作。⑤ 前端研发接 cg agents/drain 时直接 import 各包 claudePlugin/codexPlugin/geminiPlugin（默认实例即真实 nodeSpawn）；单测注入 spawner 用 @conductgun/agent-cli-utils/testing。⑥ 真实付费冒烟不在本任务内，由 PM 验收阶段执行
