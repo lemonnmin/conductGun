@@ -127,7 +127,7 @@ cg review <task-id>                          # 审查 diff，决定合并/打回
 
 ## 当前状态
 
-**M0 已完成**。任务模型 + SQLite 队列（better-sqlite3，崩溃可恢复）+ WorkerHost + echo mock 插件 + 可复用插件契约测试套件 + `cg run/status/logs` 全部落地并验收：`cg run` 入队→echo 消费→终态摘要，进程崩溃后队列自动恢复重消费（74 个测试全绿）。下一步 M1：claude/codex/gemini headless 适配器 + worktree 隔离。
+**M1 已完成**（替代验收）。claude/codex/gemini headless 适配器 + 共享 cli-utils + core WorktreeManager（每任务独立 worktree/分支、崩溃恢复幂等复用、可审查 diff artifact）+ `cg agents / run --agent / --no-wait / drain` 全部落地，191 个测试全绿。真实冒烟：codex 单任务成功 + 双 codex 并行替代验收通过（同时 running、worktree 互相隔离、diff 互不混入、主工作区与远端零改动）；gemini 适配器代码就绪但被 Google 账号政策外部阻塞（个人版 Code Assist 免费层停止支持），claude 待安装后真实校准。下一步 M2：Router Agent（意图澄清 + 规划加工 + 能力路由）。
 
 开发命令：`pnpm install` · `pnpm build` · `pnpm test` · `pnpm typecheck`
 

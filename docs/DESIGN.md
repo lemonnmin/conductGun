@@ -72,6 +72,7 @@ interface AgentPlugin {
 - `execute` 内部自选传输：M1 用 headless CLI（`claude -p --output-format stream-json`、`codex exec --json`、`gemini -p` 等），M4 增加 ACP 通用适配器。
 - **契约测试**：`agent-echo` mock 插件 + 一套插件契约测试套件，任何新插件必须通过。
 - **M0 已实现**：契约套件经 `@conductgun/agent-echo/contract` 子路径导出——`runAgentContractTests(name, factory, opts?)`（失败注入经 `opts.createFailing` 工厂提供，未提供则 skip），另导出 `createContractRunHarness` / `makeContractTaskSpec` 供复用。abort 语义接受「返回 ok:false」或「抛出」两种实现；插件必须至少异步检查一次 ctx.signal（瞬时同步完成的实现需保留异步检查点）。
+- **M1 已实现**：claude/codex/gemini 三个 headless 适配器（`plugins/agent-claude|codex|gemini`）+ 共享工具包 `plugins/agent-cli-utils`（可注入 Spawner、runHeadless：abort→SIGTERM→5s→SIGKILL、buildAgentPrompt 仅从 TaskSpec 结构化字段拼装、createRunRegistry 幂等 cancel）。最终命令行：codex `exec -C <workdir> -s workspace-write --skip-git-repo-check --json`；gemini `-p … --approval-mode yolo -o json --skip-trust`（worktree 未信任目录所需，PM 追认）；claude `-p … --output-format stream-json`（未安装，stub 验收，真实 flag 待校准）。healthCheck 只读零付费、不输出凭据内容。单测全部 stub spawn，零真实 CLI/网络/付费。
 
 ## 5. Router（packages/router）
 
@@ -136,12 +137,15 @@ interface TaskSpec {
 - worker 环境拦截 push（git 协议层），只读主工作区。
 - commit 署名带 agent 与 task 元信息（trailer：`CG-Agent: codex` / `CG-Task: t-xxxx`）。
 - review 通过后由核心执行 merge（fast-forward 或 squash，可配置），随后清理 worktree。
+- **M1 已实现子集**：core `WorktreeManager`（create 按 taskId 幂等——崩溃 recover 复用同一 worktree；分支 `cg/<agentId>/<taskId>`；baseCommit 记创建时 HEAD 作 diff 基线；handle 元数据存 worktree 目录外）。WorkerHost opts 可选 `worktrees`：启用时 ctx.workdir 为任务 worktree 绝对路径，ok 且 artifacts 含 diff 时宿主 `git add -A` + `git diff --cached <baseCommit>` 追加 diff artifact（已提交+未提交均覆盖）。**M1 不自动清理**（成功留审查/失败留排查），清理策略待定。禁 push 落地 = TaskSpec constraints 固定注入 + codex workspace-write 沙箱（gemini/claude 无同等沙箱，残留风险靠约束文本+验收核查）。已知发现：① codex 沙箱可写根不含 worktree 的 gitdir（在主仓库 .git/worktrees 下），agent 无法自行 commit——宿主 diff 捕获不受影响，M2/M3 评估增补可写根；② commit 署名 trailer 与协议层 push 拦截未实现（M3）；③ 下游 agent 可能越界改无关文件（冒烟曾现 codex 自改 AGENTS.md，约束文本「不要改动其他任何文件」验证有效）——显式文件范围约束属 M2 Router TaskSpec 议题。
 
 ## 7. CLI（packages/cli）
 
 `cg` 命令与 headless daemon 通过本地 RPC（unix socket / localhost HTTP）通信；daemon 无头运行，队列状态全在 SQLite。命令集见 README「CLI 一瞥」。`cg daemon start|stop|status` 管理生命周期。
 
 **M0 简化（已实现）**：无独立 daemon，CLI 进程内组合 TaskQueue + WorkerHost；已实现 `cg run / status / logs`（run 等待终态后退出，输出低密度摘要）。daemon RPC 选型（开放问题 5）留 M1+，届时 commands 层改为客户端调用，core 不动。
+
+**M1 已实现**：`cg agents`（插件健康列表，不可用原因说人话）；`cg run --agent <id>`（preferredAgent 路由、constraints 注入禁 push 三禁令、artifacts 含 diff、真实 agent 默认 600s 超时）；`cg run --no-wait`（只入队）；`cg drain`（recover→全插件注册→WorkerHost 启用 worktree 隔离→等队列清空→逐任务摘要+worktree 路径+diff 指引，超时可再 drain 续消费）。默认无 --agent 的 run 保持 M0 行为（echo、不起 worktree）。daemon RPC 仍无（开放问题 5 继续留置）。
 
 ## 8. 开放问题（M0/M1 期间敲定，敲定后写 ADR 并更新本节）
 

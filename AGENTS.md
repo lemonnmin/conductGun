@@ -17,11 +17,11 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M1 进行中**（三方代码验收通过并已合并 main；真实冒烟部分通过，gemini 被外部账号政策阻塞） |
-| 已完成 | M0 全部目标（已推送 origin/main）；M1 三任务验收通过（worktree 50/50、adapters 67、cli 60，根级 191/191）；三方合并 main（f74696f→668ed53→fc0ec5f）；真实冒烟：codex 任务 done、并行+隔离+可审查 diff 验证生效 |
-| 进行中 | 等待用户决策 gemini 可用性（免费个人版 Code Assist 被 Google 停止支持，UNSUPPORTED_CLIENT） |
-| 下一步 | gemini 恢复后补第二个真实 agent 并行冒烟 → M1 闭环（DESIGN/README 回写）；或用户决定替代验收方案 |
-| 已知阻塞 | gemini 登录态在但服务端拒绝（IneligibleTierError，需迁移 Antigravity 或换可用凭据）——外部因素，非代码问题 |
+| 阶段 | **M1 已完成**（三任务验收通过并合并 main；codex 真实冒烟成功 + 双 codex 并行替代验收通过；gemini 外部阻塞遗留） |
+| 已完成 | M0 全部目标（已推送 origin/main）；M1 全部目标：WorktreeManager + WorkerHost 隔离（t-m1-worktree）、claude/codex/gemini 适配器 + cli-utils（t-m1-adapters）、cg agents/run --agent/--no-wait/drain（t-m1-cli）；根级 191/191 绿；真实冒烟证据见同步日志 2026-11-23；README/DESIGN 已回写 M1 语义 |
+| 进行中 | 无 |
+| 下一步 | M2（Router Agent：意图澄清 + 规划加工 + LLM 拆解 + 能力路由 + 任务 DAG），待用户启动排期 |
+| 已知阻塞 | 无（gemini 真实验证为外部遗留：Google 停止个人版 Code Assist 免费层，待用户迁移 Antigravity 或配置 GEMINI_API_KEY 后补验，不阻塞 M2） |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
 
@@ -30,9 +30,9 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 | 角色 | 模块所有权 | 当前任务 / 分支 |
 |------|-----------|----------------|
 | PM hub | AGENTS.md / README / docs（研发按协议追加日志，合并冲突由 PM 解决） | 派发与验收 |
-| 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m1-worktree / `cg/core/t-m1-worktree`（验收通过待合并） |
-| 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters / `cg/plugins/t-m1-adapters`（验收通过待合并） |
-| 前端研发 | `packages/cli`（cg 命令）及未来 Web | t-m1-cli / `cg/cli/t-m1-cli`（在途） |
+| 研发A | `packages/core`（任务模型、SQLite 队列、调度、契约类型落码） | t-m1-worktree 已完成合并；M2 待排期 |
+| 研发B | `plugins/*`（echo 插件、契约测试套件、真实 agent 适配器） | t-m1-adapters 已完成合并；M2 待排期 |
+| 前端研发 | `packages/cli`（cg 命令）及未来 Web | t-m1-cli 已完成合并；M2 待排期 |
 | （冻结） | `packages/router` M2 前不动 | — |
 
 **协作纪律（派发任务时随消息下达）：**
@@ -205,3 +205,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：main 合并提交 f74696f（worktree）→ 668ed53（adapters）→ fc0ec5f（cli），AGENTS.md 冲突按纪律 6 取日志并集，lockfile 自动合并干净经 pnpm install 校验；AGENTS.md §2 状态
 - 决策：① t-m1-cli 验收**通过**：独立重跑根级 build/typecheck/test 全绿（191/191，cli 60/60 含 M0 31 原样）；drain 集成断言并行度≥2、worktree 隔离、分支命名、diff --cached 基线、主工作区零改动、失败保留、崩溃 recover 均属实；真实 cg agents 探测 codex/gemini ok、claude 未安装 exit 0；两个实现选择知悉（约束注入仅 --agent 路径、drain 对 echo 也建 worktree 符合 §3.2）。② 三方合并后根级 191/191 绿。③ **真实冒烟部分通过**（任务书 §5，两个最小付费任务已获用户确认）：codex t-ec1f1275 与 gemini t-bd275098 同时 claim（14:33:04）并行执行——**并行+隔离机制验证生效**：主工作区零改动、HEAD 未动、origin/main 仍 8648860（禁 push 生效）、两 worktree 独立分支 cg/codex/t-ec1f1275 与 cg/gemini/t-bd275098、diff 基线 fc0ec5f 可审查。codex **done**：docs/smoke/codex-hello.md 一句自我介绍已写入（worktree .cg/worktrees/t-ec1f1275）；gemini **failed**：服务端 IneligibleTierError/UNSUPPORTED_CLIENT——Google 停止支持个人版 Code Assist 免费层，要求迁移 Antigravity，属外部账号政策阻塞，非适配器缺陷（healthCheck 凭据存在性探测无法预知服务端资格）。④ 冒烟发现两则记录在案：a) codex workspace-write 沙箱禁止写 worktree 的 git 索引锁（gitdir 在主仓库 .git/worktrees 下、沙箱可写根之外），agent 无法自行 commit——宿主 diff 捕获不受影响（add -A 在宿主侧执行），M1 冒烟任务措辞可去掉「提交」要求，M2 评估是否给 codex 增补 gitdir 可写根；b) codex 在 worktree 内自行追加了 AGENTS.md 状态行/日志（范围外但被隔离 confined，主工作区未受影响）——M2 Router 应在 TaskSpec 加显式文件范围约束
 - 遗留：① **M1 闭环待 gemini 恢复**：需用户决策（迁移 Antigravity / 配置可用 GEMINI_API_KEY / 或指定替代验收方案如两个 codex 并行），恢复后补第二个真实 agent 冒烟再宣告 M1 完成并回写 DESIGN/README；② 冒烟 worktree t-ec1f1275/t-bd275098 与队列记录按 M1 不自动清理策略保留；③ main 领先 origin/main（M1 全部合并+文档），**未 push**（待用户指示）；④ M0/M1 研发 worktree/分支清理仍待用户表态；⑤ codex 摘要提取假设本次冒烟未见异常（done 摘要正常取到）
+
+### 2026-11-23 · Qoder (PM hub) · 双 codex 替代冒烟通过 → M1 验收闭环 + README/DESIGN 回写
+- 改动：README.md（当前状态 M1 已完成）；docs/DESIGN.md（§4 M1 适配器与命令行、§6 M1 worktree 子集与两则发现、§7 M1 CLI 命令）；AGENTS.md §2 状态与所有权表；无代码改动
+- 决策：用户批准双 codex 替代验收（额外付费已确认）、gemini 列外部阻塞遗留。**替代冒烟通过**，证据：任务 t-aeea1962（codex-parallel-a.md）与 t-e07bbfc6（codex-parallel-b.md），prompt 含「不要改动其他任何文件」约束；drain 2 done/0 failed exit 0；**并行度≥2**——两任务同于 14:37:06 claim+start、14:37:54 done，运行窗口完全重叠；各自独立 worktree .cg/worktrees/t-aeea1962（分支 cg/codex/t-aeea1962）与 .cg/worktrees/t-e07bbfc6（分支 cg/codex/t-e07bbfc6）；**diff 互不混入**——各 diff --cached bf349e4 仅含自己的 1 个文件；主工作区 git status 空、HEAD 未动；origin/main 仍 bf349e4（禁 push 生效）；**约束文本有效**——本次两 agent 均只新增目标文件，未复现上轮自改 AGENTS.md 的越界。**M1 最终验收结论：通过**（codex 真实成功 + 双 codex 并行替代验收；异构双 agent 验收因 gemini 外部阻塞改道，用户批准）
+- 遗留：① gemini 真实验证待用户迁移 Antigravity 或配置 GEMINI_API_KEY 后补验（适配器代码与 stub 验收已就绪）；② claude 待安装后真实 flag 校准（stream-json 可能需 --verbose）；③ codex 沙箱禁 commit（gitdir 在可写根外）与显式文件范围约束属 M2/M3 议题（DESIGN §6 已记录）；④ M0/M1 全部研发 worktree（.cg/worktrees/t-m0-*、t-m1-*）与冒烟 worktree（t-ec1f1275、t-bd275098、t-aeea1962、t-e07bbfc6）及 cg/* 分支保留，清理待用户表态；⑤ 本轮证据登记提交留本地，**禁止 push**（用户指示后续推送另行安排）；⑥ M2 待用户启动：Router 预处理流水线 + 能力路由 + DAG，开放问题 1/2/6/7 需敲定，daemon RPC（开放问题 5）继续留置
