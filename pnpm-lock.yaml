@@ -239,12 +239,94 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  plugins/agent-claude:
+    dependencies:
+      '@conductgun/agent-cli-utils':
+        specifier: workspace:*
+        version: link:../agent-cli-utils
+      '@conductgun/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@conductgun/agent-echo':
+        specifier: workspace:*
+        version: link:../agent-echo
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.1.1
+        version: 5.1.1(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15))
+
+  plugins/agent-cli-utils:
+    dependencies:
+      '@conductgun/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.1.1
+        version: 5.1.1(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15))
+
+  plugins/agent-codex:
+    dependencies:
+      '@conductgun/agent-cli-utils':
+        specifier: workspace:*
+        version: link:../agent-cli-utils
+      '@conductgun/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@conductgun/agent-echo':
+        specifier: workspace:*
+        version: link:../agent-echo
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.1.1
+        version: 5.1.1(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15))
+
   plugins/agent-echo:
     dependencies:
       '@conductgun/core':
         specifier: workspace:*
         version: link:../../packages/core
     devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.1.1
+        version: 5.1.1(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15))
+
+  plugins/agent-gemini:
+    dependencies:
+      '@conductgun/agent-cli-utils':
+        specifier: workspace:*
+        version: link:../agent-cli-utils
+      '@conductgun/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@conductgun/agent-echo':
+        specifier: workspace:*
+        version: link:../agent-echo
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
