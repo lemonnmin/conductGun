@@ -17,11 +17,11 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 
 | 项 | 状态 |
 |----|------|
-| 阶段 | **M1 进行中**（t-m1-worktree、t-m1-adapters 验收通过待合并；cli 在途） |
-| 已完成 | M0 全部目标（已合并并推送 origin/main）；M1 环境核实、拆解与冻结契约增量 v1.1（docs/dispatch/2026-11-22-m1-tasks.md）；**t-m1-worktree 验收通过**（core 50/50、根级 95/95）；**t-m1-adapters 验收通过**（四包 67 tests + echo 14 无回归，--skip-trust 偏差追认） |
-| 进行中 | t-m1-cli（前端研发）阶段一完成（54/54），等依赖合并后跑集成，最终回报待父会话转达 |
-| 下一步 | cli 回报 → PM 验收 → 按 worktree→adapters→cli 合并 main → codex+gemini 真实并行冒烟 |
-| 已知阻塞 | 无 |
+| 阶段 | **M1 进行中**（三方代码验收通过并已合并 main；真实冒烟部分通过，gemini 被外部账号政策阻塞） |
+| 已完成 | M0 全部目标（已推送 origin/main）；M1 三任务验收通过（worktree 50/50、adapters 67、cli 60，根级 191/191）；三方合并 main（f74696f→668ed53→fc0ec5f）；真实冒烟：codex 任务 done、并行+隔离+可审查 diff 验证生效 |
+| 进行中 | 等待用户决策 gemini 可用性（免费个人版 Code Assist 被 Google 停止支持，UNSUPPORTED_CLIENT） |
+| 下一步 | gemini 恢复后补第二个真实 agent 并行冒烟 → M1 闭环（DESIGN/README 回写）；或用户决定替代验收方案 |
+| 已知阻塞 | gemini 登录态在但服务端拒绝（IneligibleTierError，需迁移 Antigravity 或换可用凭据）——外部因素，非代码问题 |
 
 ### 2.1 协作拓扑与模块所有权（2026-11-21 起生效）
 
@@ -200,3 +200,8 @@ ConductGun：一个 Router Agent 通过持久化任务队列，把用户命令�
 - 改动：packages/cli（src/args.ts 扩展 --agent/--no-wait/--timeout 与 agents/drain 命令；src/spec.ts --agent 路径注入 §3.4 三条禁令 + M1 直填 assumption + requiredCapabilities=[] + artifacts 含 diff；src/commands.ts run 扩展（no-wait 只入队、真实 agent 默认 600s/echo 30s/--timeout 覆盖）；新增 src/plugins.ts 全插件注册表、src/agents.ts 健康列表、src/drain.ts 全链路消费；src/index.ts 接线；src/format.ts 加 formatAgentLine/formatDrainSummary；package.json 加 agent-claude/codex/gemini workspace 依赖）；packages/cli/test/{args-m1,spec-m1,format-m1,run-m1,drain-m1,agents-m1}.test.ts（29 新用例）；pnpm-lock.yaml（cli 依赖变更必然产物，纪律 6）；合并 cg/core/t-m1-worktree（8476816→08b89ac）与 cg/plugins/t-m1-adapters（39f5010→cb9c3af），只读引用未改对方模块；AGENTS.md（与研发A/B 的状态/日志冲突按并集解决，双方条目全保留）
 - 决策：无契约偏离。实现选择：① ParsedArgs 新字段为可选且仅在显式给出时赋值，M0 解析断言（toEqual）原样通过；② 约束注入作用于 --agent 路径，默认无 --agent 保持 M0 Spec 原样（任务书「M0 行为与测试不变」优先）；③ drain repoRoot 取 git rev-parse --show-toplevel（测试可注入），worktree 路径/分支/baseCommit 经 WorktreeManager.list() 按 taskId 映射，diff 指引 `git -C <path> diff <baseCommit>`；④ drain 退出码：全部 done→0，有 failed/cancelled 或超时→1（超时可再次 drain 续消费）；⑤ agentsCommand 对 healthCheck 抛错降级为「不可用+原因」，不中断列表；⑥ 适配器导出名按 echo 惯例 import claudePlugin/codexPlugin/geminiPlugin，与研发B 实际导出一致（其日志⑤已确认）；⑦ drain 单测用写文件型 stub + 临时 git 仓库 fixture，断言并行度≥2、worktree 互相隔离、diff --cached 基线可审查、主工作区零改动、失败保留 worktree、崩溃 recover 重消费
 - 遗留：① 验收证据：cli build/typecheck/test 全绿（60/60：M0 31 原样 + 新增 29）；根级全量 191/191 绿、build/typecheck 全绿；cg agents 本机真实探测 codex/gemini ok、claude「未安装」（只读零付费）；bin 冒烟：临时 git 仓库内 run --no-wait→status queued→drain（echo 消费、worktree 路径+分支+diff 指引+1 done/0 failed 总结）→status done，错误路径（--agent 缺值、drain --no-wait）exit 1。② 分支 cg/cli/t-m1-cli，未 push；本分支已含 worktree/adapters 全部提交且 AGENTS.md 冲突已按并集解决，PM 合并本分支即可带齐三方。③ 建议冒烟命令（PM 验收阶段、合并 main 后在主仓库根执行）：`cg agents` → `cg run --agent codex --no-wait "在 docs/smoke/ 下创建 codex-hello.md，内容写一句自我介绍，提交到当前分支"` → `cg run --agent gemini --no-wait "在 docs/smoke/ 下创建 gemini-hello.md，内容写一句自我介绍，提交到当前分支"` → `cg drain --timeout 900`；证据按任务书 §5 记录任务 id/分支/worktree/diff 并核查 origin 无新提交。④ drain 对 echo 任务同样创建 worktree（WorkerHost 统一启用隔离，符合 §3.2）；cg run 默认路径不起 worktree，M0 行为不变。⑤ claude 真实 flag 校准属研发B 遗留，CLI 侧无需改动
+
+### 2026-11-23 · Qoder (PM hub) · t-m1-cli 验收通过 + 三方合并 main + 真实冒烟（部分通过，gemini 外部阻塞）
+- 改动：main 合并提交 f74696f（worktree）→ 668ed53（adapters）→ fc0ec5f（cli），AGENTS.md 冲突按纪律 6 取日志并集，lockfile 自动合并干净经 pnpm install 校验；AGENTS.md §2 状态
+- 决策：① t-m1-cli 验收**通过**：独立重跑根级 build/typecheck/test 全绿（191/191，cli 60/60 含 M0 31 原样）；drain 集成断言并行度≥2、worktree 隔离、分支命名、diff --cached 基线、主工作区零改动、失败保留、崩溃 recover 均属实；真实 cg agents 探测 codex/gemini ok、claude 未安装 exit 0；两个实现选择知悉（约束注入仅 --agent 路径、drain 对 echo 也建 worktree 符合 §3.2）。② 三方合并后根级 191/191 绿。③ **真实冒烟部分通过**（任务书 §5，两个最小付费任务已获用户确认）：codex t-ec1f1275 与 gemini t-bd275098 同时 claim（14:33:04）并行执行——**并行+隔离机制验证生效**：主工作区零改动、HEAD 未动、origin/main 仍 8648860（禁 push 生效）、两 worktree 独立分支 cg/codex/t-ec1f1275 与 cg/gemini/t-bd275098、diff 基线 fc0ec5f 可审查。codex **done**：docs/smoke/codex-hello.md 一句自我介绍已写入（worktree .cg/worktrees/t-ec1f1275）；gemini **failed**：服务端 IneligibleTierError/UNSUPPORTED_CLIENT——Google 停止支持个人版 Code Assist 免费层，要求迁移 Antigravity，属外部账号政策阻塞，非适配器缺陷（healthCheck 凭据存在性探测无法预知服务端资格）。④ 冒烟发现两则记录在案：a) codex workspace-write 沙箱禁止写 worktree 的 git 索引锁（gitdir 在主仓库 .git/worktrees 下、沙箱可写根之外），agent 无法自行 commit——宿主 diff 捕获不受影响（add -A 在宿主侧执行），M1 冒烟任务措辞可去掉「提交」要求，M2 评估是否给 codex 增补 gitdir 可写根；b) codex 在 worktree 内自行追加了 AGENTS.md 状态行/日志（范围外但被隔离 confined，主工作区未受影响）——M2 Router 应在 TaskSpec 加显式文件范围约束
+- 遗留：① **M1 闭环待 gemini 恢复**：需用户决策（迁移 Antigravity / 配置可用 GEMINI_API_KEY / 或指定替代验收方案如两个 codex 并行），恢复后补第二个真实 agent 冒烟再宣告 M1 完成并回写 DESIGN/README；② 冒烟 worktree t-ec1f1275/t-bd275098 与队列记录按 M1 不自动清理策略保留；③ main 领先 origin/main（M1 全部合并+文档），**未 push**（待用户指示）；④ M0/M1 研发 worktree/分支清理仍待用户表态；⑤ codex 摘要提取假设本次冒烟未见异常（done 摘要正常取到）
