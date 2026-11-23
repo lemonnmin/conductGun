@@ -1,4 +1,4 @@
-import type { TaskEvent, TaskRecord } from "@conductgun/core";
+import type { CapabilityCard, TaskEvent, TaskRecord } from "@conductgun/core";
 
 const GOAL_MAX = 60;
 
@@ -28,4 +28,24 @@ export function formatRunOutcome(task: TaskRecord, events: TaskEvent[]): string 
     default:
       return `任务 ${task.id} 状态异常（${task.status}），可用 cg logs ${task.id} 查看详情`;
   }
+}
+
+export function formatAgentLine(
+  card: CapabilityCard,
+  health: { ok: boolean; detail?: string },
+): string {
+  const state = health.ok ? "ok" : "不可用";
+  const detail = health.detail ? ` — ${health.detail}` : "";
+  return `${card.id.padEnd(8)}  ${state.padEnd(4)}  ${card.displayName}${detail}`;
+}
+
+export function formatDrainSummary(tasks: TaskRecord[]): string {
+  const done = tasks.filter((t) => t.status === "done").length;
+  const failed = tasks.filter((t) => t.status === "failed").length;
+  const cancelled = tasks.filter((t) => t.status === "cancelled").length;
+  const rest = tasks.length - done - failed - cancelled;
+  let line = `drain 结束：${done} done / ${failed} failed`;
+  if (cancelled > 0) line += ` / ${cancelled} cancelled`;
+  if (rest > 0) line += ` / ${rest} 未完成`;
+  return line;
 }
